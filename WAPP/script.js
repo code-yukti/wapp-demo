@@ -239,6 +239,8 @@ const TRANSLATIONS = {
     'job.empty': 'No jobs found',
     'job.emptyHint': 'Try a different search',
     'job.statusApplied': 'Applied',
+    'job.statusAssigned': 'Assigned',
+    'job.statusCompleted': 'Completed',
     'job.statusOpen': 'Open',
     'job.about': 'About',
     'job.details': 'Details',
@@ -2551,12 +2553,27 @@ function renderMyJobs() {
     el.innerHTML = `<div class="empty"><i class="bi bi-clipboard-data"></i><div class="et">${t('myjobs.noApplications')}</div><div class="es">${t('myjobs.noApplicationsHint')}</div></div>`;
     return;
   }
-  el.innerHTML = applied.map(j => `
+  const assignedJobs = applied.filter(j => {
+    const assign = S.assigns.find(a => a.jid === j.id && a.wid === S.user.id);
+    return assign && assign.status === 'assigned';
+  });
+  if (assignedJobs.length > 0) {
+    toast(`You have ${assignedJobs.length} job${assignedJobs.length > 1 ? 's' : ''} assigned to you!`, 'info');
+  }
+  el.innerHTML = applied.map(j => {
+    const assign = S.assigns.find(a => a.jid === j.id && a.wid === S.user.id);
+    const isAssigned = assign && assign.status === 'assigned';
+    const isCompleted = assign && assign.status === 'completed';
+    const statusText = isCompleted ? t('job.statusCompleted') : isAssigned ? t('job.statusAssigned') : t('job.statusApplied');
+    const badgeClass = isCompleted ? 'badge bg' : isAssigned ? 'badge bb' : 'badge ba';
+    const actionButton = isAssigned ? `<button class="btn btn-p btn-sm" onclick="event.stopPropagation();completeJob('${j.id}')"><i class="bi bi-check-circle"></i> Complete</button>` : `<button class="btn btn-out btn-sm" onclick="event.stopPropagation();rateModal('${j.id}')" ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? 'disabled style="opacity:.6;cursor:not-allowed"' : ''}><i class="bi bi-star"></i> ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? t('rate.rated') : lt('rate.rateEmployer', 'Rate Employer')}</button>`;
+    return `
     <div class="jc" onclick="openJob('${j.id}')">
-      <div class="jct"><div><div class="jt">${ICONS[j.type]||''} ${getJobTitle(j)}</div><div class="je">${j.emp}</div></div><span class="badge ba">${t('job.statusApplied')}</span></div>
+      <div class="jct"><div><div class="jt">${ICONS[j.type]||''} ${getJobTitle(j)}</div><div class="je">${j.emp}</div></div><span class="${badgeClass}">${statusText}</span></div>
       <div class="jm"><span class="chip chip-p">${formatPay(j.pay, j.dur)}</span>${j.time ? `<span class="chip"><i class="bi bi-clock-history"></i> ${getJobTime(j)}</span>` : ''}${getJobLocation(j) ? `<span class="chip"><i class="bi bi-pin-map"></i> ${getJobLocation(j)}</span>` : ''}<span class="chip"><i class="bi bi-geo-alt"></i> ${j.dist}km</span></div>
-      <div style="margin-top:10px"><button class="btn btn-out btn-sm" onclick="event.stopPropagation();rateModal('${j.id}')" ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? 'disabled style="opacity:.6;cursor:not-allowed"' : ''}><i class="bi bi-star"></i> ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? t('rate.rated') : lt('rate.rateEmployer', 'Rate Employer')}</button></div>
-    </div>`).join('');
+      <div style="margin-top:10px">${actionButton}</div>
+    </div>`;
+  }).join('');
   animateCollection(el, '.jc');
 }
 
@@ -2713,6 +2730,8 @@ function hire(name, index = 0) {
     hiredAt: now,
     expiresAt: now + HIRE_CANCEL_WINDOW_MS
   });
+  // Save assignment to backend
+  BACKEND.saveAssignment(j.id, applicant.id || applicant.phone, name, S.user.id).catch(err => console.error('Failed to save assignment:', err));
   toast(t('job.selected', { name }), 'ok');
   renderApplicants();
   if (S.applicantView && normalizeName(S.applicantView.name) === normalizeName(name)) renderApplicantProfile();
@@ -2725,6 +2744,19 @@ function cancelHire() {
   toast(t('applicants.hireCanceled'), 'ok');
   renderApplicants();
   if (document.getElementById('page-applicant-profile')?.classList.contains('active')) renderApplicantProfile();
+}
+
+function completeJob(jobId) {
+  const assign = S.assigns.find(a => a.jid === jobId && a.wid === S.user.id);
+  if (!assign) return;
+  BACKEND.updateAssignmentStatus(jobId, S.user.id, 'completed').then(() => {
+    assign.status = 'completed';
+    toast('Job completed!', 'ok');
+    renderMyJobs();
+  }).catch(err => {
+    console.error('Failed to complete job:', err);
+    toast('Failed to complete job. Try again.');
+  });
 }
 
 function refreshApplicantViewsIfNeeded() {
