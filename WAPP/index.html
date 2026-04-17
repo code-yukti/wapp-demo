@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#5478FF">
+  <title>Wapp – The Work Access Platform</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./supabase.config.js"></script>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ SPLASH ══ -->
+<div class="page active" id="page-splash">
+  <div class="splash-shell">
+    <div class="loader splash-loader" aria-hidden="true">
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+      <div class="loader-square"></div>
+    </div>
+    <div class="splash-brand">
+      <div class="splash-wordmark">WAPP</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ROLE SELECT ══ -->
+<div class="page" id="page-role">
+  <div class="role-header">
+    <img class="role-logo" src="wapp-logo.png" alt="Wapp Logo">
+    <div class="role-title">WAPP</div>
+    <div class="role-subtitle" data-i18n="role.subtitle">The Work Access Platform</div>
+  </div>
+  <button class="role-card" onclick="selectRole('worker')">
+    <div class="role-icon i-worker"><i class="bi bi-person-workspace"></i></div>
+    <div class="role-copy"><div style="font-size:17px;font-weight:700" data-i18n="role.worker.title">I want work</div><div style="font-size:12.5px;color:var(--tm);margin-top:2px" data-i18n="role.worker.desc">Find daily jobs &amp; gigs near you</div></div>
+    <span class="role-tag">Worker</span>
+    <i class="bi bi-chevron-right" style="margin-left:auto;color:var(--tm)"></i>
+  </button>
+  <button class="role-card" onclick="selectRole('employer')">
+    <div class="role-icon i-employer"><i class="bi bi-shop"></i></div>
+    <div class="role-copy"><div style="font-size:17px;font-weight:700" data-i18n="role.employer.title">I need workers</div><div style="font-size:12.5px;color:var(--tm);margin-top:2px" data-i18n="role.employer.desc">Post jobs &amp; hire reliable locals</div></div>
+    <span class="role-tag role-tag-warm">Employer</span>
+    <i class="bi bi-chevron-right" style="margin-left:auto;color:var(--tm)"></i>
+  </button>
+  <button class="role-card mate-card" onclick="selectRole('mate')">
+    <div class="role-icon i-mate"><i class="bi bi-heart-pulse-fill"></i></div>
+    <div class="role-copy" style="flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <span style="font-size:17px;font-weight:700">wapp-mate</span>
+        <span class="mate-badge"><i class="bi bi-shield-check"></i> <span data-i18n="role.mate.badge">Volunteer</span></span>
+      </div>
+      <div style="font-size:12.5px;color:var(--tm)" data-i18n="role.mate.desc">Community volunteer – secure wapp code access</div>
+    </div>
+    <span class="role-tag role-tag-mate">Mate</span>
+    <i class="bi bi-chevron-right" style="margin-left:auto;color:var(--tm)"></i>
+  </button>
+</div>
+
+<!-- ══ LOGIN ══ -->
+<div class="page" id="page-login" style="justify-content:center;padding:0">
+  <div class="auth-wrap">
+    <div class="auth-topbar">
+      <button class="auth-back" onclick="pg('page-role')" aria-label="Back to roles" title="Back to roles"><i class="bi bi-arrow-left"></i></button>
+    </div>
+    <div class="auth-center">
+      <div class="brand-mark"><i class="bi bi-people-fill"></i></div>
+      <div style="font-size:22px;font-weight:800" data-i18n="login.signIn">Sign In</div>
+      <div style="color:var(--tm);font-size:13px;margin-top:3px" id="auth-role-label">as Worker</div>
+    </div>
+    <div class="fg"><div class="fl" data-i18n="field.email">Email Address</div>
+      <div class="iw"><i class="bi bi-envelope ii"></i><input class="fi" type="email" id="login-email-input" placeholder="name@example.com" data-i18n-placeholder="placeholder.email"></div>
+    </div>
+    <div class="fg"><div class="fl" data-i18n="field.phoneNumber">Phone Number</div>
+      <div class="iw phone-input-row">
+        <div class="cc-dropdown" id="phone-country-dd">
+          <button class="cc-trigger" type="button" id="phone-country-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleCountryDropdown('phone-country')">
+            <span class="cc-value" id="phone-country-label">+91 IN</span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <input type="hidden" id="phone-country-code" value="+91">
+          <div class="cc-menu" id="phone-country-menu" role="listbox">
+            <button type="button" class="cc-option active" data-code="+91" onclick="setCountryCode('phone-country','+91','IN')">+91 IN</button>
+            <button type="button" class="cc-option" data-code="+1" onclick="setCountryCode('phone-country','+1','US')">+1 US</button>
+            <button type="button" class="cc-option" data-code="+44" onclick="setCountryCode('phone-country','+44','UK')">+44 UK</button>
+            <button type="button" class="cc-option" data-code="+61" onclick="setCountryCode('phone-country','+61','AU')">+61 AU</button>
+            <button type="button" class="cc-option" data-code="+81" onclick="setCountryCode('phone-country','+81','JP')">+81 JP</button>
+            <button type="button" class="cc-option" data-code="+971" onclick="setCountryCode('phone-country','+971','UAE')">+971 UAE</button>
+            <button type="button" class="cc-option" data-code="+880" onclick="setCountryCode('phone-country','+880','BD')">+880 BD</button>
+          </div>
+        </div>
+        <input class="fi phone-fi" type="tel" id="phone-input" placeholder="98765 43210" maxlength="15">
+      </div>
+    </div>
+    <button class="btn btn-p" onclick="sendOTP()" data-i18n="login.logIn">Log In</button>
+    <div style="font-size:12px;color:var(--tm);margin-top:8px" data-i18n="login.otpBlockedHint">OTP verification is temporarily blocked.</div>
+    <button class="btn btn-sec" onclick="pg('page-signup')" style="margin-top:10px" data-i18n="login.createAccount">Create New Account</button>
+    <div style="text-align:center;margin-top:24px">
+      <div style="font-size:12px;color:var(--tm);margin-bottom:8px" data-i18n="login.demoMode">Hackathon demo mode</div>
+      <button class="btn btn-sec" onclick="demoLogin()" style="width:auto;padding:10px 24px;font-size:13px" data-i18n="login.demoLogin">Demo Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ OTP ══ -->
+<div class="page" id="page-otp" style="justify-content:center;padding:0">
+  <div style="padding:40px 24px;width:100%">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="width:56px;height:56px;border-radius:18px;background:var(--pl);color:var(--p);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px"><i class="bi bi-phone-fill"></i></div>
+      <div style="font-size:22px;font-weight:800" data-i18n="otp.title">Enter OTP</div>
+      <div style="color:var(--ts);font-size:14px;margin-top:6px" id="otp-hint">OTP sent to your number</div>
+    </div>
+    <div class="otp-row">
+      <input class="otp-box" type="tel" maxlength="1" id="o0" oninput="otpNext(this,0)">
+      <input class="otp-box" type="tel" maxlength="1" id="o1" oninput="otpNext(this,1)">
+      <input class="otp-box" type="tel" maxlength="1" id="o2" oninput="otpNext(this,2)">
+      <input class="otp-box" type="tel" maxlength="1" id="o3" oninput="otpNext(this,3)">
+      <input class="otp-box" type="tel" maxlength="1" id="o4" oninput="otpNext(this,4)">
+      <input class="otp-box" type="tel" maxlength="1" id="o5" oninput="otpNext(this,5)">
+    </div>
+    <button class="btn btn-p" id="otp-verify-btn" onclick="verifyOTP()" data-i18n="otp.verify">Verify OTP</button>
+    <div style="text-align:center;margin-top:14px">
+      <button onclick="pg('page-login')" style="background:none;border:none;color:var(--p);font-size:14px;cursor:pointer;font-family:var(--font)"><i class="bi bi-arrow-left"></i> <span data-i18n="otp.changeNumber">Change number</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SIGNUP ══ -->
+<div class="page" id="page-signup" style="justify-content:flex-start;padding:0">
+  <div class="auth-wrap">
+    <div class="auth-topbar">
+      <button class="auth-back" onclick="pg('page-login')" aria-label="Back to login" title="Back to login"><i class="bi bi-arrow-left"></i></button>
+    </div>
+    <div class="auth-center">
+      <div class="brand-mark"><i class="bi bi-person-plus-fill"></i></div>
+      <div style="font-size:22px;font-weight:800" data-i18n="signup.title">Create Account</div>
+      <div style="color:var(--tm);font-size:13px;margin-top:3px" id="signup-role-label">as Worker</div>
+    </div>
+    <div class="fg"><div class="fl" id="s-name-lbl">Full Name</div><div class="iw"><i class="bi bi-person ii"></i><input class="fi" type="text" id="s-name" placeholder="Enter your full name" data-i18n-placeholder="placeholder.fullName"></div></div>
+    <div class="fg" id="s-client-type" style="display:none">
+      <div class="fl" data-i18n="signup.clientType">Client Type</div>
+      <div class="dur-row">
+        <button class="db2 sel ctbtn" onclick="setCtype(this,'individual')" data-i18n="signup.individual">Individual</button>
+        <button class="db2 ctbtn" onclick="setCtype(this,'org')" data-i18n="signup.organization">Organization</button>
+      </div>
+    </div>
+    <div class="fg" id="s-org" style="display:none"><div class="fl" data-i18n="field.organizationName">Organization Name</div><div class="iw"><i class="bi bi-building ii"></i><input class="fi" type="text" id="s-orgname" placeholder="Enter org name" data-i18n-placeholder="placeholder.organizationName"></div></div>
+    <div class="fg"><div class="fl" data-i18n="field.phoneNumber">Phone Number</div><div class="iw phone-input-row"><div class="cc-dropdown" id="signup-country-dd"><button class="cc-trigger" type="button" id="signup-country-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleCountryDropdown('signup-country')"><span class="cc-value" id="signup-country-label">+91 IN</span><i class="bi bi-chevron-down"></i></button><input type="hidden" id="signup-country-code" value="+91"><div class="cc-menu" id="signup-country-menu" role="listbox"><button type="button" class="cc-option active" data-code="+91" onclick="setCountryCode('signup-country','+91','IN')">+91 IN</button><button type="button" class="cc-option" data-code="+1" onclick="setCountryCode('signup-country','+1','US')">+1 US</button><button type="button" class="cc-option" data-code="+44" onclick="setCountryCode('signup-country','+44','UK')">+44 UK</button><button type="button" class="cc-option" data-code="+61" onclick="setCountryCode('signup-country','+61','AU')">+61 AU</button><button type="button" class="cc-option" data-code="+81" onclick="setCountryCode('signup-country','+81','JP')">+81 JP</button><button type="button" class="cc-option" data-code="+971" onclick="setCountryCode('signup-country','+971','UAE')">+971 UAE</button><button type="button" class="cc-option" data-code="+880" onclick="setCountryCode('signup-country','+880','BD')">+880 BD</button></div></div><input class="fi phone-fi" type="tel" id="s-phone" placeholder="98765 43210" maxlength="15"></div></div>
+    <div class="fg"><div class="fl" data-i18n="field.email">Email Address</div><div class="iw"><i class="bi bi-envelope ii"></i><input class="fi" type="email" id="s-email" placeholder="name@example.com" data-i18n-placeholder="placeholder.email"></div></div>
+    <div class="fg">
+      <div class="fl" data-i18n="field.location">Location</div>
+      <div class="post-location-stack">
+        <div class="post-location-row">
+          <button class="post-locate-btn" type="button" id="signup-location-btn" onclick="fillSignupLocation()">
+            <i class="bi bi-geo-alt-fill"></i>
+            <span id="signup-location-btn-label" data-i18n="signup.fetchLocation">Use Current</span>
+          </button>
+          <div class="iw post-location-input-wrap">
+            <i class="bi bi-geo-alt ii"></i>
+            <input class="fi" type="text" id="s-loc" placeholder="Area, city, state" data-i18n-placeholder="placeholder.location">
+          </div>
+        </div>
+        <div class="loc-hint" id="signup-location-hint" data-i18n="signup.locationHint">Tap the pin to fetch your current location or type it manually.</div>
+      </div>
+    </div>
+    <div class="fg" id="s-skill"><div class="fl" data-i18n="field.primarySkill">Primary Skill</div><div class="iw"><i class="bi bi-tools ii"></i><input class="fi" type="text" id="s-skillval" placeholder="Construction, delivery, farm work" data-i18n-placeholder="placeholder.primarySkill"></div></div>
+    <div class="fg" id="s-need" style="display:none"><div class="fl" id="s-need-lbl">Hiring Need</div><div class="iw"><i class="bi bi-briefcase ii"></i><input class="fi" type="text" id="s-needval" placeholder="What kind of workers?" data-i18n-placeholder="placeholder.hiringNeed"></div></div>
+    <div class="fg" id="s-orgreg" style="display:none"><div class="fl" data-i18n="field.registration">GST / Registration ID</div><div class="iw"><i class="bi bi-patch-check ii"></i><input class="fi" type="text" id="s-regval" placeholder="Optional registration ID" data-i18n-placeholder="placeholder.registration"></div></div>
+    <div class="fg">
+      <div class="fl" data-i18n="field.password">Password</div>
+      <div class="iw">
+        <i class="bi bi-lock ii"></i>
+        <input class="fi" type="password" id="s-pass" placeholder="Create a password" data-i18n-placeholder="placeholder.password" minlength="6" maxlength="8" autocomplete="new-password">
+        <button class="pw-toggle" type="button" onclick="togglePasswordVisibility('s-pass', this)" aria-label="Show password"><i class="bi bi-eye"></i></button>
+      </div>
+    </div>
+    <button class="btn btn-p" onclick="signup()" data-i18n="signup.createAccount">Create Account</button>
+    <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--ts)"><span data-i18n="signup.haveAccount">Already have an account?</span>
+      <button onclick="pg('page-login')" style="background:none;border:none;color:var(--p);font-size:13px;cursor:pointer;font-family:var(--font);font-weight:700" data-i18n="signup.loginHere">Login here</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ WAPP-MATE LOGIN ══ -->
+<div class="page" id="page-wm-login" style="justify-content:center;padding:0">
+  <div class="auth-wrap">
+    <div class="auth-topbar">
+      <button class="auth-back" onclick="pg('page-role')" aria-label="Back to roles" title="Back to roles"><i class="bi bi-arrow-left"></i></button>
+    </div>
+    <div class="auth-center">
+      <div class="brand-mark mate-mark"><i class="bi bi-shield-lock-fill"></i></div>
+      <div style="font-size:22px;font-weight:800" data-i18n="mate.access">wapp-mate Access</div>
+      <div style="color:var(--m);font-size:13px;font-weight:600;margin-top:3px" data-i18n="mate.portal">Moderator Command Portal</div>
+    </div>
+    <div class="wapp-code-wrap">
+      <div class="wapp-code-label"><i class="bi bi-key-fill"></i> <span data-i18n="mate.secretCode">Secret Wapp Code</span></div>
+      <div class="wapp-code-boxes">
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc0" oninput="wappNext(this,0)" onkeydown="wappBack(event,0)">
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc1" oninput="wappNext(this,1)" onkeydown="wappBack(event,1)">
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc2" oninput="wappNext(this,2)" onkeydown="wappBack(event,2)">
+        <div style="display:flex;align-items:center;padding:0 2px;color:var(--tm);font-size:18px;font-weight:300">–</div>
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc3" oninput="wappNext(this,3)" onkeydown="wappBack(event,3)">
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc4" oninput="wappNext(this,4)" onkeydown="wappBack(event,4)">
+        <input class="wapp-code-box" type="text" maxlength="1" id="wc5" oninput="wappNext(this,5)" onkeydown="wappBack(event,5)">
+      </div>
+      <div class="wapp-code-hint"><i class="bi bi-info-circle"></i> <span data-i18n="mate.codeHint">6-char code issued by your coordinator</span></div>
+    </div>
+    <div class="fg"><div class="fl" data-i18n="field.phoneNumber">Phone Number</div><div class="iw phone-input-row"><div class="cc-dropdown" id="mate-country-dd"><button class="cc-trigger" type="button" id="mate-country-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleCountryDropdown('mate-country')"><span class="cc-value" id="mate-country-label">+91 IN</span><i class="bi bi-chevron-down"></i></button><input type="hidden" id="mate-country-code" value="+91"><div class="cc-menu" id="mate-country-menu" role="listbox"><button type="button" class="cc-option active" data-code="+91" onclick="setCountryCode('mate-country','+91','IN')">+91 IN</button><button type="button" class="cc-option" data-code="+1" onclick="setCountryCode('mate-country','+1','US')">+1 US</button><button type="button" class="cc-option" data-code="+44" onclick="setCountryCode('mate-country','+44','UK')">+44 UK</button><button type="button" class="cc-option" data-code="+61" onclick="setCountryCode('mate-country','+61','AU')">+61 AU</button><button type="button" class="cc-option" data-code="+81" onclick="setCountryCode('mate-country','+81','JP')">+81 JP</button><button type="button" class="cc-option" data-code="+971" onclick="setCountryCode('mate-country','+971','UAE')">+971 UAE</button><button type="button" class="cc-option" data-code="+880" onclick="setCountryCode('mate-country','+880','BD')">+880 BD</button></div></div><input class="fi phone-fi" type="tel" id="mate-phone" placeholder="98765 43210" maxlength="15"></div></div>
+    <button class="btn btn-m" onclick="mateLogin()" data-i18n="mate.verifyEnter">Verify &amp; Enter</button>
+  </div>
+</div>
+
+<!-- ══ BROWSE JOBS ══ -->
+<div class="page" id="page-browse">
+  <div class="hdr">
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--tm);font-weight:600;letter-spacing:.04em;text-transform:uppercase" data-i18n="browse.greeting">Good day</div>
+      <div class="hdr-t" id="browse-greet">Find Jobs</div>
+    </div>
+    <button class="hdr-a" onclick="pg('page-profile')"><i class="bi bi-person-circle"></i></button>
+  </div>
+  <div class="sw">
+    <div class="siw"><i class="bi bi-search"></i><input class="si" type="text" placeholder="Search jobs, skills…" oninput="filterJobs(this.value)" data-i18n-placeholder="browse.searchPlaceholder"></div>
+    <button class="fb" type="button" id="browse-filter-btn" onclick="openBrowseFilterModal()" aria-label="Open filters"><i class="bi bi-sliders"></i></button>
+  </div>
+  <div class="pb" style="padding-top:12px">
+    <div class="st" style="margin-bottom:12px" data-i18n="browse.jobsNear">Jobs near you</div>
+    <div id="job-list"></div>
+  </div>
+</div>
+
+<!-- ══ MY JOBS ══ -->
+<div class="page" id="page-myjobs">
+  <div class="hdr">
+    <div class="hdr-t" data-i18n="myjobs.title">My Jobs</div>
+    <button class="hdr-a" onclick="pg('page-profile')"><i class="bi bi-person-circle"></i></button>
+  </div>
+  <div class="pb">
+    <div class="tabs">
+      <button class="tab active" id="tab-applied" onclick="switchTab('applied')" data-i18n="myjobs.applied">Applied</button>
+      <button class="tab" id="tab-saved" onclick="switchTab('saved')" data-i18n="myjobs.saved">Saved</button>
+    </div>
+    <div id="myjobs-list"></div>
+  </div>
+</div>
+
+<!-- ══ JOB DETAIL ══ -->
+<div class="page" id="page-detail">
+  <div class="dh" id="dh"></div>
+  <div class="db" id="db"></div>
+  <div class="df" id="df"></div>
+</div>
+
+<!-- ══ EMPLOYER DASH ══ -->
+<div class="page" id="page-employer">
+  <div class="hdr">
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--tm);font-weight:600;letter-spacing:.04em;text-transform:uppercase" data-i18n="employer.label">Employer</div>
+      <div class="hdr-t" id="emp-greet">Dashboard</div>
+    </div>
+    <button class="hdr-a" onclick="pg('page-profile')"><i class="bi bi-person-circle"></i></button>
+  </div>
+  <div class="pb">
+    <div class="st" style="margin-bottom:12px" data-i18n="employer.postedJobs">Your Posted Jobs</div>
+    <div id="emp-list"></div>
+  </div>
+</div>
+
+<!-- ══ POST JOB ══ -->
+<div class="page" id="page-post">
+  <div class="ph">
+    <button onclick="back()" style="background:rgba(255,255,255,.16);border:none;color:#fff;padding:6px 12px;border-radius:99px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);margin-bottom:14px;display:inline-flex;align-items:center;gap:6px"><i class="bi bi-arrow-left"></i> <span data-i18n="common.back">Back</span></button>
+    <div style="font-size:22px;font-weight:800" data-i18n="post.title">Post a Job</div>
+    <div style="font-size:14px;opacity:.75;margin-top:4px" data-i18n="post.subtitle">Find workers near you</div>
+  </div>
+  <div class="pb">
+    <div class="fg"><div class="fl" data-i18n="field.jobTitle">Job Title</div><div class="iw"><i class="bi bi-briefcase ii"></i><input class="fi" type="text" id="post-title" placeholder="e.g. Farm helper needed" data-i18n-placeholder="placeholder.jobTitle"></div></div>
+    <div class="fg">
+      <div class="fl" data-i18n="field.jobType">Job Type</div>
+      <div class="type-grid">
+        <button class="tb sel" onclick="selType(this,'farm')"><span class="te">🌾</span>Farm</button>
+        <button class="tb" onclick="selType(this,'shop')"><span class="te">🏪</span>Shop</button>
+        <button class="tb" onclick="selType(this,'home')"><span class="te">🏠</span>Home</button>
+        <button class="tb" onclick="selType(this,'construction')"><span class="te">🔨</span>Build</button>
+        <button class="tb" onclick="selType(this,'delivery')"><span class="te">📦</span>Delivery</button>
+        <button class="tb" onclick="selType(this,'other')"><span class="te">💼</span>Other</button>
+      </div>
+    </div>
+    <div class="fg">
+      <div class="fl" data-i18n="field.duration">Duration</div>
+      <div class="dur-row">
+        <button class="db2 sel" onclick="selDur(this,'instant')">One-time</button>
+        <button class="db2" onclick="selDur(this,'daily')">Daily</button>
+        <button class="db2" onclick="selDur(this,'weekly')">Weekly</button>
+        <button class="db2" onclick="selDur(this,'fullTime')">Full-time</button>
+      </div>
+    </div>
+    <div class="fg"><div class="fl" data-i18n="field.timeDuration">Time Duration</div><div class="iw"><i class="bi bi-clock ii"></i><input class="fi" type="text" id="post-time" placeholder="e.g. 9:00 AM - 5:00 PM or 4 hours" data-i18n-placeholder="placeholder.timeDuration"></div></div>
+    <div class="fg"><div class="fl" data-i18n="field.pay">Pay (₹)</div><div class="iw"><i class="bi bi-currency-rupee ii"></i><input class="fi" type="number" id="post-pay" placeholder="500" data-i18n-placeholder="placeholder.pay"></div></div>
+    <div class="fg">
+      <div class="fl" data-i18n="field.workLocation">Work Location</div>
+      <div class="post-location-stack">
+        <div class="post-location-row">
+          <button class="post-locate-btn" type="button" id="post-location-btn" onclick="fillCurrentLocation()">
+            <i class="bi bi-geo-alt-fill"></i>
+            <span id="post-location-btn-label" data-i18n="post.fetchLocation">Use Current</span>
+          </button>
+          <div class="iw post-location-input-wrap">
+            <i class="bi bi-geo-alt ii"></i>
+            <input class="fi" type="text" id="post-location" placeholder="Area, city, state" data-i18n-placeholder="placeholder.location">
+          </div>
+        </div>
+        <div class="loc-hint" id="post-location-hint" data-i18n="post.locationHint">Tap the pin to fetch your current location or type it manually.</div>
+      </div>
+    </div>
+    <div class="fg"><div class="fl" data-i18n="field.description">Description</div><textarea class="fi" id="post-desc" placeholder="Describe the work, timing, requirements…" data-i18n-placeholder="placeholder.description"></textarea></div>
+    <button class="btn btn-p" onclick="postJob()" data-i18n="post.postJob">Post Job</button>
+  </div>
+</div>
+
+<!-- ══ APPLICANTS ══ -->
+<div class="page" id="page-apps">
+  <div class="hdr">
+    <button class="hdr-a" onclick="back()"><i class="bi bi-arrow-left"></i></button>
+    <div class="hdr-t" data-i18n="applicants.title">Applicants</div>
+  </div>
+  <div class="pb" id="apps-body"></div>
+</div>
+<div class="page" id="page-applicant-profile">
+  <div class="hdr">
+    <button class="hdr-a" onclick="back()"><i class="bi bi-arrow-left"></i></button>
+    <div class="hdr-t" data-i18n="nav.profile">Profile</div>
+  </div>
+  <div class="pb" id="applicant-profile-body"></div>
+</div>
+
+<!-- ══ WAPP-MATE DASH ══ -->
+<div class="page" id="page-mate">
+  <div class="hdr hdr-mate">
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--m);font-weight:600;letter-spacing:.04em;text-transform:uppercase" data-i18n="mate.brand">wapp-mate</div>
+      <div class="hdr-t" style="color:var(--md)" data-i18n="nav.command">Command</div>
+    </div>
+    <button class="hdr-a" onclick="pg('page-profile')" style="color:var(--m)"><i class="bi bi-person-circle"></i></button>
+  </div>
+  <div class="mdh">
+    <div style="font-size:13px;opacity:.75;margin-bottom:4px"><span data-i18n="mate.hi">Hi,</span> <span id="mate-name">Arunabha</span></div>
+    <div class="mct" data-i18n="mate.commandTitle">Volunteer Command</div>
+    <div class="mdp"><i class="bi bi-cpu"></i> <span data-i18n="mate.online">ESP32-NFC online</span> <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;margin-left:4px"></span></div>
+    <div class="msr">
+      <div class="ms"><div class="msv" id="m-assigned">...</div><div class="msl" data-i18n="mate.assigned">Assigned</div></div>
+      <div class="ms"><div class="msv" id="m-done">...</div><div class="msl" data-i18n="mate.completed">Completed</div></div>
+      <div class="ms"><div class="msv" id="m-earn">...</div><div class="msl" data-i18n="mate.incentives">Incentives</div></div>
+    </div>
+  </div>
+  <div class="pb" style="padding-top:20px">
+    <div class="st" style="margin-bottom:10px"><i class="bi bi-cpu"></i> <span data-i18n="mate.assignDesk">NFC Assign Desk</span></div>
+    <div class="ic mi"><i class="bi bi-broadcast-pin" style="color:var(--m);margin-right:6px"></i><span data-i18n="mate.assignHelp">Select an open job and tap a worker's NFC card to assign them.</span></div>
+    <div class="mate-scan-actions">
+      <button class="tap-btn mate-scan-btn" id="mate-scan-trigger-btn" type="button" onclick="openMateScanModal()">
+        <i class="bi bi-broadcast-pin"></i> Scan Card
+      </button>
+      <button class="btn btn-sec btn-sm" type="button" onclick="resetMateScan()">
+        <i class="bi bi-arrow-clockwise"></i> Clear Scan
+      </button>
+    </div>
+    <div class="fg">
+      <div class="fl" data-i18n="mate.selectJob">Select Job to Assign</div>
+      <select class="fi" id="mate-job-sel" style="padding-left:14px" onchange="renderMateWorkers()">
+        <option value="" data-i18n="mate.selectJobOption">Select a job</option>
+      </select>
+    </div>
+    <div id="mate-workers"></div>
+    <div class="st" style="margin:20px 0 10px"><i class="bi bi-diagram-3"></i> <span data-i18n="mate.activeChain">Active Volunteer Chain</span></div>
+    <div id="mate-active"></div>
+  </div>
+</div>
+
+<!-- ══ WAPP-MATE FORM ══ -->
+<div class="page" id="page-mate-form">
+  <div class="hdr hdr-mate">
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--m);font-weight:600;letter-spacing:.04em;text-transform:uppercase" data-i18n="mate.brand">wapp-mate</div>
+      <div class="hdr-t" style="color:var(--md)">Form</div>
+    </div>
+    <button class="hdr-a" onclick="pg('page-mate')" style="color:var(--m)"><i class="bi bi-broadcast-pin"></i></button>
+  </div>
+  <div class="pb" style="padding-top:20px">
+    <div id="mate-offline-section"></div>
+  </div>
+</div>
+
+<!-- ══ PROFILE (SHARED) ══ -->
+<div class="page" id="page-profile">
+  <div class="ph2" id="pf-hero" style="background:linear-gradient(145deg,var(--p),var(--pd))">
+    <div class="av-lg" id="pf-av">R</div>
+    <div style="font-size:22px;font-weight:800" id="pf-name">Ravi Kumar</div>
+    <div style="font-size:13px;opacity:.75;margin-top:3px" id="pf-role">Worker · Mumbai</div>
+    <div style="margin-top:12px"><span class="badge bg" id="pf-badge"><i class="bi bi-star-fill"></i> 0 rating</span></div>
+  </div>
+  <div class="srow">
+    <div class="sb"><div class="sv" id="pf-score">82</div><div class="sl">Trust Score</div></div>
+    <div class="sb"><div class="sv" id="pf-jobs">14</div><div class="sl">Jobs Done</div></div>
+    <div class="sb"><div class="sv" id="pf-rating">0</div><div class="sl">Rating</div></div>
+  </div>
+  <div class="ps2">
+    <div class="st" data-i18n="profile.account">Account</div>
+    <div class="pr"><div class="pri"><i class="bi bi-phone"></i></div><div class="prl" data-i18n="profile.phone">Phone</div><div class="prv" id="pf-phone">+91 98765 43210</div></div>
+    <div class="pr"><div class="pri"><i class="bi bi-geo-alt"></i></div><div class="prl" data-i18n="profile.location">Location</div><div class="prv">Siliguri, WB</div></div>
+    <div class="pr" id="pf-code-row" style="display:none">
+      <div class="pri" style="background:var(--ms);color:var(--m)"><i class="bi bi-key-fill"></i></div>
+      <div class="prl" style="color:var(--m)" data-i18n="profile.wappCode">Wapp Code</div>
+      <div class="prv" style="font-family:'Courier New',monospace;color:var(--md);font-weight:700" id="pf-code">-</div>
+    </div>
+    <div class="pr" id="pf-dev-row" style="display:none">
+      <div class="pri" style="background:var(--ms);color:var(--m)"><i class="bi bi-cpu"></i></div>
+      <div class="prl" style="color:var(--m)" data-i18n="profile.deviceId">Device ID</div>
+      <div class="prv" style="font-family:'Courier New',monospace" id="pf-dev">WMD001</div>
+    </div>
+    <div class="pr">
+      <div class="pri"><i class="bi bi-translate"></i></div>
+      <div class="prl" data-i18n="profile.language">Language</div>
+      <div class="lang-row lang-row-settings">
+        <button class="lang-btn active" data-lang="en" type="button">EN</button>
+        <button class="lang-btn" data-lang="hi" type="button">HI</button>
+        <button class="lang-btn" data-lang="bn" type="button">BN</button>
+      </div>
+    </div>
+    <div class="pr">
+      <div class="pri" style="background:linear-gradient(135deg,rgba(15,45,82,.08),rgba(201,162,39,.14));color:var(--pd)"><i class="bi bi-moon-stars"></i></div>
+      <div class="prl" data-i18n="profile.darkMode">Dark Mode</div>
+      <label class="tsw"><input type="checkbox" data-tt><span class="tsl"></span></label>
+    </div>
+    <div class="pr" style="cursor:pointer" onclick="logout()">
+      <div class="pri" style="background:rgba(220,38,38,.1);color:var(--danger)"><i class="bi bi-box-arrow-right"></i></div>
+      <div class="prl" style="color:var(--danger)" data-i18n="profile.logout">Logout</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAYMENT ══ -->
+<div class="page" id="page-payment">
+  <div class="hdr">
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--tm);font-weight:600;letter-spacing:.04em;text-transform:uppercase" id="payment-label">Payment</div>
+      <div class="hdr-t" id="payment-title">Payment</div>
+    </div>
+    <button class="hdr-a" onclick="pg('page-profile')"><i class="bi bi-person-circle"></i></button>
+  </div>
+  <div class="pb" id="payment-content">
+    <!-- Content will be populated based on role -->
+  </div>
+</div>
+
+<!-- ══ WORKER NAV ══ -->
+<nav class="bnav" id="worker-nav">
+  <button class="ni active" onclick="nav('worker-nav','page-browse',this)"><i class="bi bi-search"></i><span data-i18n="nav.browse">Browse</span></button>
+  <button class="ni" onclick="nav('worker-nav','page-myjobs',this)"><i class="bi bi-clipboard-check"></i><span data-i18n="nav.myJobs">My Jobs</span></button>
+  <button class="ni" onclick="nav('worker-nav','page-payment',this)"><i class="bi bi-credit-card"></i><span data-i18n="nav.payment">Payment</span></button>
+  <button class="ni" onclick="nav('worker-nav','page-profile',this)"><i class="bi bi-person-circle"></i><span data-i18n="nav.profile">Profile</span></button>
+</nav>
+
+<!-- ══ EMPLOYER NAV ══ -->
+<nav class="bnav" id="employer-nav">
+  <button class="ni active" onclick="nav('employer-nav','page-employer',this)"><i class="bi bi-house"></i><span data-i18n="nav.dashboard">Dashboard</span></button>
+  <button class="ni" onclick="nav('employer-nav','page-post',this)"><i class="bi bi-plus-circle"></i><span data-i18n="nav.postJob">Post Job</span></button>
+  <button class="ni" onclick="nav('employer-nav','page-payment',this)"><i class="bi bi-credit-card"></i><span data-i18n="nav.payment">Payment</span></button>
+  <button class="ni" onclick="nav('employer-nav','page-profile',this)"><i class="bi bi-person-circle"></i><span data-i18n="nav.profile">Profile</span></button>
+</nav>
+
+<!-- ══ MATE NAV ══ -->
+<nav class="bnav" id="mate-nav">
+  <button class="ni mn active" onclick="nav('mate-nav','page-mate',this)"><i class="bi bi-broadcast-pin"></i><span data-i18n="nav.command">Command</span></button>
+  <button class="ni mn" onclick="nav('mate-nav','page-mate-form',this)"><i class="bi bi-file-earmark-text"></i><span>Form</span></button>
+  <button class="ni mn" onclick="nav('mate-nav','page-browse',this)"><i class="bi bi-search"></i><span data-i18n="nav.browse">Browse</span></button>
+  <button class="ni mn" onclick="nav('mate-nav','page-payment',this)"><i class="bi bi-credit-card"></i><span data-i18n="nav.payment">Payment</span></button>
+  <button class="ni mn" onclick="nav('mate-nav','page-profile',this)"><i class="bi bi-person-circle"></i><span data-i18n="nav.profile">Profile</span></button>
+</nav>
+
+<!-- ══ RATING MODAL ══ -->
+<div class="mo" id="rate-modal">
+  <div class="ms2">
+    <div class="mh"></div>
+    <div id="rate-modal-title" style="font-size:18px;font-weight:800;text-align:center" data-i18n="rate.title">Rate this Job</div>
+    <div id="rate-modal-target" style="font-size:12px;color:var(--tm);text-align:center;margin-top:6px"></div>
+    <div class="star-row">
+      <button class="sb2" onclick="setStar(1)">★</button>
+      <button class="sb2" onclick="setStar(2)">★</button>
+      <button class="sb2" onclick="setStar(3)">★</button>
+      <button class="sb2" onclick="setStar(4)">★</button>
+      <button class="sb2" onclick="setStar(5)">★</button>
+    </div>
+    <div class="fg"><textarea class="fi" id="rate-comment" placeholder="Share your experience (optional)…" data-i18n-placeholder="rate.placeholder"></textarea></div>
+    <button class="btn btn-p" onclick="submitRate()" data-i18n="rate.submit">Submit Rating</button>
+    <button class="btn btn-sec" onclick="closeModal('rate-modal')" style="margin-top:10px" data-i18n="common.cancel">Cancel</button>
+  </div>
+</div>
+
+<div class="mo" id="browse-filter-modal">
+  <div class="ms2 filter-sheet">
+    <div class="mh"></div>
+    <div class="filter-sheet-head" style="font-size:18px;font-weight:800;text-align:center;margin-bottom:16px">Filter Jobs</div>
+    <div class="fg filter-sheet-item">
+      <div class="fl">Job Type</div>
+      <select class="fi" id="bf-type" style="padding-left:14px">
+        <option value="all">All</option>
+        <option value="farm">Farm</option>
+        <option value="shop">Shop</option>
+        <option value="home">Home</option>
+        <option value="construction">Build</option>
+        <option value="delivery">Delivery</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="fg filter-sheet-item">
+      <div class="fl">Duration</div>
+      <select class="fi" id="bf-dur" style="padding-left:14px">
+        <option value="all">All</option>
+        <option value="instant">One-time</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="fullTime">Full-time</option>
+      </select>
+    </div>
+    <div class="fg filter-sheet-item">
+      <div class="fl">Max Distance (km)</div>
+      <div class="iw"><i class="bi bi-geo-alt ii"></i><input class="fi" type="number" min="0" step="0.1" id="bf-max-dist" placeholder="e.g. 5"></div>
+    </div>
+    <div class="fg filter-sheet-item" style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <input type="checkbox" id="bf-open-only" style="width:18px;height:18px;accent-color:var(--p)">
+      <label for="bf-open-only" style="font-size:14px;color:var(--ts);font-weight:600">Show only open jobs</label>
+    </div>
+    <button class="btn btn-p filter-sheet-item" onclick="applyBrowseFilters()">Apply Filters</button>
+    <button class="btn btn-sec filter-sheet-item" onclick="resetBrowseFilters()" style="margin-top:10px">Reset</button>
+    <button class="btn btn-sec filter-sheet-item" onclick="closeModal('browse-filter-modal')" style="margin-top:10px" data-i18n="common.cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ══ WAPP-MATE SCAN ══ -->
+<div class="mo" id="mate-scan-modal" aria-hidden="true">
+  <div class="ms2 scan-sheet">
+    <div class="mh"></div>
+    <div class="scan-hero">
+      <div class="scan-badge"><i class="bi bi-broadcast-pin"></i> ESP32-NFC Link</div>
+      <div class="scan-title">Wapp-Mate Scan</div>
+      <div class="scan-copy">
+        Create a scan request for the IoT device, then wait for the next NFC read to come back from Supabase.
+      </div>
+    </div>
+
+    <div id="scan-status" class="scan-status scan-idle">Ready to create a scan request.</div>
+
+    <div class="scan-grid">
+      <div class="scan-card">
+        <span>Request ID</span>
+        <strong id="scan-request-id">-</strong>
+      </div>
+      <div class="scan-card">
+        <span>Card UID</span>
+        <strong id="scan-card-uid">-</strong>
+      </div>
+      <div class="scan-card">
+        <span>WAPP ID</span>
+        <strong id="scan-wapp-id">-</strong>
+      </div>
+      <div class="scan-card">
+        <span>Scan Time</span>
+        <strong id="scan-time">-</strong>
+      </div>
+    </div>
+
+    <div class="scan-result hidden" id="scan-result">
+      <div class="scan-result-title">Scan Result</div>
+      <div class="scan-result-list">
+        <div class="scan-result-row">
+          <div class="scan-result-label">User Name</div>
+          <div class="scan-result-value" id="scan-name">-</div>
+        </div>
+        <div class="scan-result-row">
+          <div class="scan-result-label">Bank Details</div>
+          <div class="scan-result-value" id="scan-bank">-</div>
+        </div>
+        <div class="scan-result-row">
+          <div class="scan-result-label">Access</div>
+          <div class="scan-result-value" id="scan-access">-</div>
+        </div>
+        <div class="scan-result-row">
+          <div class="scan-result-label">Job</div>
+          <div class="scan-result-value" id="scan-job">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scan-actions">
+      <button class="btn btn-m" id="scan-start-btn" type="button" onclick="handleMateScanPrimaryAction()">
+        <i class="bi bi-play-circle"></i> Start Scan
+      </button>
+      <button class="btn btn-sec btn-sm" type="button" onclick="resetMateScan()">
+        Reset
+      </button>
+      <button class="btn btn-sec btn-sm" type="button" onclick="closeMateScanModal()">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+</div>
+<script src="./backend.js"></script>
+<script src="./script.js"></script>
+</body>
+</html>
