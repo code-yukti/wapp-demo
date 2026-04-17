@@ -121,7 +121,7 @@ const TRANSLATIONS = {
     'field.pay': 'Pay (Rs)',
     'field.workLocation': 'Work Location',
     'field.description': 'Description',
-    'placeholder.phone': '+91 98765 43210',
+    'placeholder.phone': '+91 XXXXXXXXXX',
     'placeholder.fullName': 'Enter your full name',
     'placeholder.organizationName': 'Enter org name',
     'placeholder.email': 'name@example.com',
@@ -384,7 +384,7 @@ const TRANSLATIONS = {
   'field.workLocation': 'काम की लोकेशन',
   'field.description': 'विवरण',
 
-  'placeholder.phone': '+91 98765 43210',
+  'placeholder.phone': '+91 XXXXXXXXXX',
   'placeholder.fullName': 'अपना पूरा नाम लिखें',
   'placeholder.organizationName': 'संगठन का नाम लिखें',
   'placeholder.email': 'name@example.com',
