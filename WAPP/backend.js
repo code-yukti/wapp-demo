@@ -11,7 +11,6 @@
   }
 
   function mapProfile(row) {
-    if (!row) return null;
     return {
       id: row.id || '',
       name: row.name || '',
@@ -21,41 +20,50 @@
       av: row.avatar || (row.name ? row.name.charAt(0) : '?'),
       jobs: toNumber(row.jobs_done, 0),
       rating: toNumber(row.rating, 0),
-      score: toNumber(row.score, 0),
-      walletBalance: toNumber(row.wallet_balance, 0),
-      code: row.code || '',
-      device: row.device_id || '',
-      ctype: row.ctype || 'individual',
-      organizationName: row.organization_name || '',
+    let workerData = null;
+    if (!offlineWorker) {
+      const newWorkerBalance = toNumber(worker.wallet_balance, 0) + workerShare;
+      const { data: updatedWorkerData, error: workerError } = await client
+        .from('profiles')
+        .update({ wallet_balance: newWorkerBalance })
+        .eq('id', worker.id)
+        .select('*')
+        .maybeSingle();
+      if (workerError) throw workerError;
+      workerData = updatedWorkerData;
+    }
       skill: row.primary_skill || '',
-      need: row.hiring_need || '',
-      reg: row.registration_id || '',
-      upiId: row.upi_id || '',
-      bankAccount: row.bank_account || null,
-      matePayout: row.mate_payout || null,
-      role: row.role || 'worker'
-    };
-  }
+    const txRows = [
+      {
+        profile_id: employerData.id,
+        role: 'employer',
+        job_id: jobId,
+        amount: -jobPay,
+        type: 'debit',
+        description: `Paid ${workerShare} to ${worker.name} for ${job.title}`
+      },
+      {
+        profile_id: employerData.id,
+        role: 'employer',
+        job_id: jobId,
+        amount: commission,
+        type: 'commission',
+        description: `Platform fee for ${job.title}`
+      }
+    ];
 
-  function mapJob(row) {
-    if (!row) return null;
-    return {
-      id: row.id,
-      title: row.title || '',
-      type: row.type || 'other',
-      pay: toNumber(row.pay, 0),
-      dur: row.duration || 'daily',
-      time: row.time_label || '',
-      emp: row.owner_name || 'You',
-      loc: row.location || '',
-      pin: row.latitude != null && row.longitude != null ? { lat: toNumber(row.latitude), lon: toNumber(row.longitude) } : null,
-      desc: row.description || '',
-      dist: toNumber(row.distance_km, 0),
-      status: row.status || 'open',
-      apps: Array.isArray(row.applicant_names) ? row.applicant_names : [],
-      ago: row.created_at ? 'just now' : 'just now',
-      ownerRole: row.owner_role || 'employer',
-      ownerPhone: row.owner_phone || '',
+    if (workerData) {
+      txRows.splice(1, 0, {
+        profile_id: workerData.id,
+        role: 'worker',
+        job_id: jobId,
+        amount: workerShare,
+        type: 'credit',
+        description: `Earnings for ${job.title}`
+      });
+    }
+
+    await safeQuery(client.from('wallet_transactions').insert(txRows));
       ownerName: row.owner_name || 'You'
     };
   }
@@ -107,6 +115,21 @@
       targetRole: row.target_role || '',
       stars: toNumber(row.stars, 0),
       comment: row.comment || '',
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || ''
+    };
+  }
+
+  function mapWalletTransaction(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      profileId: row.profile_id || '',
+      role: row.role || 'worker',
+      jobId: row.job_id || '',
+      amount: toNumber(row.amount, 0),
+      type: row.type || (toNumber(row.amount, 0) >= 0 ? 'credit' : 'debit'),
+      description: row.description || '',
       createdAt: row.created_at || '',
       updatedAt: row.updated_at || ''
     };
@@ -230,14 +253,15 @@
 
   async function loadSnapshot() {
     if (!client) return null;
-    const [profiles, jobs, assignments, payments, applications, ratings, offlineWorkers] = await Promise.all([
+    const [profiles, jobs, assignments, payments, applications, ratings, offlineWorkers, walletTransactions] = await Promise.all([
       safeQuery(client.from('profiles').select('*')),
       safeQuery(client.from('jobs').select('*').order('created_at', { ascending: false })),
       safeQuery(client.from('assignments').select('*').order('created_at', { ascending: false })),
       safeQuery(client.from('payment_methods').select('*').order('created_at', { ascending: false })),
       safeQuery(client.from('applications').select('job_id, applicant_name, created_at').order('created_at', { ascending: false })),
       safeQueryOrEmpty(client.from('ratings').select('*').order('created_at', { ascending: false })),
-      safeQueryOrEmpty(client.from('offline_workers').select('*').order('created_at', { ascending: false }))
+      safeQueryOrEmpty(client.from('offline_workers').select('*').order('created_at', { ascending: false })),
+      safeQueryOrEmpty(client.from('wallet_transactions').select('*').order('created_at', { ascending: false }))
     ]);
 
     const appByJob = (applications || []).reduce((acc, row) => {
@@ -257,6 +281,7 @@
     return {
       profiles: profiles.map(mapProfile).filter(Boolean),
       offlineWorkers: (offlineWorkers || []).map(mapOfflineWorker).filter(Boolean),
+      walletTransactions: (walletTransactions || []).map(mapWalletTransaction).filter(Boolean),
       jobs: mergedJobs.map(mapJob).filter(Boolean),
       ratings: (ratings || []).map(mapRating).filter(Boolean),
       assignments: assignments || [],
@@ -477,12 +502,29 @@
 
     const isUuid = typeof workerId === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(workerId);
     const workerQueryBase = client.from('profiles').select('*');
-    const worker = await safeQuery(
+    let worker = await safeQuery(
       isUuid
         ? workerQueryBase.eq('id', workerId).maybeSingle()
         : workerQueryBase.eq('phone', workerId).maybeSingle()
     );
-    if (!worker) throw new Error('Worker profile not found');
+    let offlineWorker = null;
+    if (!worker) {
+      offlineWorker = await safeQuery(
+        client.from('offline_workers').select('*').eq('worker_code', workerId).maybeSingle()
+      );
+      if (!offlineWorker) throw new Error('Worker profile not found');
+      worker = {
+        id: offlineWorker.id || workerId,
+        name: offlineWorker.name || 'Worker',
+        phone: '',
+        wallet_balance: 0,
+        workerCode: offlineWorker.worker_code || workerId,
+        payoutMethod: offlineWorker.payout_method || 'upi',
+        upiId: offlineWorker.upi_id || '',
+        bankAccount: offlineWorker.bank_account || null,
+        offline: true
+      };
+    }
 
     const jobPay = toNumber(job.pay, 0);
     const workerShare = Math.round(jobPay * 0.95);
@@ -556,7 +598,29 @@
     return {
       assignment: assignmentData,
       employer: mapProfile(employerData),
-      worker: mapProfile(workerData)
+      worker: offlineWorker ? {
+        id: worker.id,
+        name: worker.name,
+        phone: '',
+        loc: offlineWorker.location || '',
+        av: worker.name ? worker.name.charAt(0).toUpperCase() : '?',
+        jobs: 0,
+        rating: 0,
+        score: 0,
+        code: worker.workerCode || workerId,
+        device: '',
+        ctype: 'individual',
+        organizationName: '',
+        skill: offlineWorker.primary_skill || '',
+        need: '',
+        reg: '',
+        upiId: worker.upiId || '',
+        bankAccount: worker.bankAccount || null,
+        payoutMethod: worker.payoutMethod || 'upi',
+        offline: true,
+        workerCode: worker.workerCode || workerId
+      } : mapProfile(workerData),
+      demo: Boolean(offlineWorker)
     };
   }
 

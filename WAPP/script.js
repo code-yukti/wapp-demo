@@ -26,6 +26,8 @@ const AVATAR_COLORS = ['#3F9AAE', '#79C9C5', '#FFE2AF', '#F96E5B'];
 const OFFLINE_WORKER_STORAGE_KEY = 'wapp-offline-workers';
 const AUTH_SESSION_STORAGE_KEY = 'wapp-auth-session';
 const AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const JOB_ALERT_SIGNATURE_KEY = 'wapp-job-alert-signature';
+const PAYMENT_TRANSACTIONS_STORAGE_KEY = 'wapp-payment-transactions';
 
 function clearStoredAuthSession() {
   try { localStorage.removeItem(AUTH_SESSION_STORAGE_KEY); } catch (e) {}
@@ -46,6 +48,28 @@ function persistAuthSession() {
   try { localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
   try { sessionStorage.setItem('wappRole', S.role); } catch (e) {}
   try { sessionStorage.setItem('wappUser', JSON.stringify(S.user)); } catch (e) {}
+}
+
+function readStoredJobAlertSignature() {
+  try { return localStorage.getItem(JOB_ALERT_SIGNATURE_KEY) || ''; } catch (e) { return ''; }
+}
+
+function saveStoredJobAlertSignature(signature) {
+  try { localStorage.setItem(JOB_ALERT_SIGNATURE_KEY, signature || ''); } catch (e) {}
+}
+
+function loadStoredPaymentTransactions() {
+  try {
+    const raw = localStorage.getItem(PAYMENT_TRANSACTIONS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveStoredPaymentTransactions(transactions) {
+  try { localStorage.setItem(PAYMENT_TRANSACTIONS_STORAGE_KEY, JSON.stringify(transactions || [])); } catch (e) {}
 }
 
 function readStoredAuthSession() {
@@ -260,6 +284,8 @@ const TRANSLATIONS = {
     'job.selected': '{name} selected!',
     'job.appliedToast': 'Applied!',
     'job.markedComplete': 'Job marked complete!',
+    'job.workerAlertAdded': '{count} new job(s) posted: {title}',
+    'job.workerAlertRemoved': '{count} job(s) removed: {title}',
     'profile.account': 'Account',
     'profile.phone': 'Phone',
     'profile.location': 'Location',
@@ -747,6 +773,186 @@ function getJobTime(job)         { return td(job?.time  || ''); }
 function getJobLocation(job)     { return td(job?.loc   || ''); }
 function getWorkerSkill(worker)  { return td(worker?.skill || ''); }
 function getWorkerAvailability(w){ return td(w?.avail   || ''); }
+function getJobSnapshotSignature(jobs = []) {
+  return jobs
+    .map(job => String(job?.id || '').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function normalizePaymentTransaction(row = {}) {
+  if (!row) return null;
+  const amount = Number(row.amount);
+  return {
+    id: String(row.id || row.txId || row.referenceId || `${row.role || 'payment'}-${Date.now()}`),
+    role: row.role || 'worker',
+    type: row.type || (amount >= 0 ? 'credit' : 'debit'),
+    amount: Number.isFinite(amount) ? amount : 0,
+    label: String(row.label || row.description || row.title || 'Transaction').trim(),
+    time: String(row.time || row.createdAt || 'just now').trim(),
+    jobId: String(row.jobId || row.job_id || '').trim(),
+    referenceId: String(row.referenceId || row.reference_id || row.ref || '').trim(),
+    profileId: String(row.profileId || row.profile_id || '').trim(),
+    profilePhone: String(row.profilePhone || row.phone || '').trim(),
+    workerCode: String(row.workerCode || row.worker_code || '').trim(),
+    counterparty: String(row.counterparty || row.counterpartyName || '').trim(),
+    demo: Boolean(row.demo)
+  };
+}
+
+function upsertStoredPaymentTransactions(transactions = []) {
+  const next = [...loadStoredPaymentTransactions()];
+  const seen = new Set(next.map(entry => entry.id));
+  transactions.map(normalizePaymentTransaction).filter(Boolean).forEach(entry => {
+    if (seen.has(entry.id)) return;
+    seen.add(entry.id);
+    next.unshift(entry);
+  });
+  saveStoredPaymentTransactions(next);
+  return next;
+}
+
+function getPaymentTransactions() {
+  return PAYMENT_TRANSACTIONS.map(normalizePaymentTransaction).filter(Boolean);
+}
+
+function seedEmployerDemoWallet(profile) {
+  const demoPhone = String(profile?.phone || '9990000000').trim();
+  const demoName = String(profile?.name || 'Employer Demo').trim();
+  const demoWalletBalance = 2000;
+  const demoTxId = 'demo-wallet-credit';
+  const demoWorkerTxId = 'demo-worker-payout';
+
+  const transactions = upsertStoredPaymentTransactions([
+    {
+      id: demoTxId,
+      role: 'employer',
+      type: 'credit',
+      amount: 2000,
+      label: 'Demo wallet credited',
+      time: 'just now',
+      profilePhone: demoPhone,
+      profileId: String(profile?.id || 'demo-employer'),
+      referenceId: 'demo-wallet-credit',
+      demo: true,
+      counterparty: 'Platform'
+    },
+    {
+      id: demoWorkerTxId,
+      role: 'worker',
+      type: 'credit',
+      amount: 1900,
+      label: 'Demo payout received',
+      time: 'just now',
+      profilePhone: '9991110000',
+      profileId: 'demo-worker',
+      referenceId: 'demo-payout-2000',
+      demo: true,
+      counterparty: demoName
+    }
+  ]);
+
+  PAYMENT_TRANSACTIONS = transactions;
+  return demoWalletBalance;
+}
+
+function getPaymentHistoryEntries(role) {
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  const currentPhone = normalizePhone(S.user?.phone || '');
+  const currentProfileId = String(S.user?.id || '').trim();
+
+  return getPaymentTransactions()
+    .filter(entry => entry.role === normalizedRole)
+    .filter(entry => {
+      const entryPhone = normalizePhone(entry.profilePhone || '');
+      const currentWorkerCode = normalizeWorkerCode(S.user?.workerCode || S.user?.code || '');
+      const entryWorkerCode = normalizeWorkerCode(entry.workerCode || '');
+      if (currentProfileId && entry.profileId) return entry.profileId === currentProfileId;
+      if (currentPhone && entryPhone) return entryPhone === currentPhone;
+      if (currentWorkerCode && entryWorkerCode) return entryWorkerCode === currentWorkerCode;
+      return entry.demo;
+    })
+    .sort((a, b) => String(b.time).localeCompare(String(a.time)))
+    .map(entry => ({
+      label: entry.label,
+      time: entry.time,
+      amt: `${entry.amount >= 0 ? '+' : '-'}₹${Math.abs(entry.amount)}`,
+      type: entry.type
+    }));
+}
+
+function recordSettlementTransactions(job, settlement) {
+  if (!job || !settlement) return;
+  const jobPay = Number(job.pay || 0);
+  const workerShare = Math.round(jobPay * 0.95);
+  const commission = Math.round(jobPay * 0.05);
+  const employer = settlement.employer || {};
+  const worker = settlement.worker || {};
+  const workerCode = String(worker.workerCode || worker.code || '').trim();
+  const workerLabel = worker.name || worker.workerCode || 'Worker';
+  const employerLabel = employer.name || job.ownerName || 'Employer';
+
+  PAYMENT_TRANSACTIONS = upsertStoredPaymentTransactions([
+    {
+      id: `tx-${job.id}-employer-debit`,
+      role: 'employer',
+      type: 'debit',
+      amount: -jobPay,
+      label: `${job.title} completed`,
+      time: 'just now',
+      jobId: job.id,
+      profileId: String(employer.id || ''),
+      profilePhone: String(employer.phone || job.ownerPhone || ''),
+      counterparty: workerLabel,
+      demo: Boolean(settlement.demo)
+    },
+    {
+      id: `tx-${job.id}-employer-fee`,
+      role: 'employer',
+      type: 'commission',
+      amount: commission,
+      label: `Platform fee for ${job.title}`,
+      time: 'just now',
+      jobId: job.id,
+      profileId: String(employer.id || ''),
+      profilePhone: String(employer.phone || job.ownerPhone || ''),
+      counterparty: 'Platform',
+      demo: Boolean(settlement.demo)
+    },
+    {
+      id: `tx-${job.id}-worker-credit`,
+      role: 'worker',
+      type: 'credit',
+      amount: workerShare,
+      label: `${job.title} payout`,
+      time: 'just now',
+      jobId: job.id,
+      profileId: settlement.worker?.offline ? '' : String(worker.id || ''),
+      profilePhone: String(worker.phone || ''),
+      workerCode,
+      counterparty: employerLabel,
+      demo: Boolean(settlement.demo)
+    }
+  ]);
+}
+function notifyWorkerJobChange(previousJobs = [], nextJobs = []) {
+  if (S.role !== 'worker') return;
+  const previousById = new Map(previousJobs.filter(Boolean).map(job => [job.id, job]));
+  const nextById = new Map(nextJobs.filter(Boolean).map(job => [job.id, job]));
+  const added = [...nextById.keys()].filter(id => !previousById.has(id));
+  const removed = [...previousById.keys()].filter(id => !nextById.has(id));
+
+  if (added.length) {
+    const sample = nextById.get(added[0]);
+    toast(`${added.length} new job${added.length === 1 ? '' : 's'} posted: ${getJobTitle(sample) || sample?.title || 'Open job'}`, 'ok');
+  }
+
+  if (removed.length) {
+    const sample = previousById.get(removed[0]);
+    toast(`${removed.length} job${removed.length === 1 ? '' : 's'} removed: ${getJobTitle(sample) || sample?.title || 'Job'}`, 'info');
+  }
+}
 function getJobPin(job) {
   const lat = Number(job?.pin?.lat);
   const lon = Number(job?.pin?.lon);
@@ -786,6 +992,7 @@ let EJOBS = [];
 let WORKERS = [];
 let RATINGS = [];
 let PROFILES = [];
+let PAYMENT_TRANSACTIONS = loadStoredPaymentTransactions();
 const RATING_STORAGE_KEY = 'wapp-local-ratings';
 const MATE_DEVICE_ID = 'WMD001';
 
@@ -1356,7 +1563,9 @@ async function syncAssignmentFromMateScan() {
   try {
     await BACKEND.saveAssignment(target.jid, target.wid, mateScanResult.name || target.name, S.user?.name || 'mate');
     if (nextStatus === 'done') {
-      await BACKEND.updateAssignmentStatus(target.jid, target.wid, 'done');
+      const settlement = await BACKEND.settleJobPayment(target.jid, target.wid);
+      const settledJob = JOBS.find(item => item.id === target.jid) || EJOBS.find(item => item.id === target.jid);
+      recordSettlementTransactions(settledJob || { id: target.jid, title: mateScanResult.job || 'Job', pay: Number(settledJob?.pay || 0), ownerPhone: S.user?.phone || '' }, settlement);
     }
   } catch (error) {}
 
@@ -1626,7 +1835,7 @@ function buildProfileFromForm(role) {
   const isWorker = role === 'worker';
   const isMate = role === 'mate';
   const name = (document.getElementById('s-name')?.value || '').trim();
-  const phone = composePhoneWithCountry('s-phone', 'signup-country-code');
+  const phone = composePhoneWithCountry('signup-phone-input', 'signup-country-code');
   const email = (document.getElementById('s-email')?.value || '').trim();
   const location = (document.getElementById('s-loc')?.value || '').trim();
   const profile = {
@@ -1656,6 +1865,10 @@ function buildProfileFromForm(role) {
 
 async function hydrateBackendState() {
   RATINGS = loadStoredRatings();
+  const previousJobs = Array.isArray(JOBS) ? JOBS.slice() : [];
+  const previousSignature = getJobSnapshotSignature(previousJobs);
+  const storedSignature = readStoredJobAlertSignature();
+  const hadData = S.dataReady;
   S.dataReady = false;
   try {
     const snapshot = await BACKEND.loadSnapshot();
@@ -1663,6 +1876,11 @@ async function hydrateBackendState() {
     JOBS = Array.isArray(snapshot.jobs) ? snapshot.jobs.slice() : [];
     JOBS.forEach(syncStoredHireState);
     syncEmployerJobs();
+    const nextSignature = getJobSnapshotSignature(JOBS);
+    if ((hadData && previousSignature !== nextSignature) || (!hadData && storedSignature && storedSignature !== nextSignature)) {
+      notifyWorkerJobChange(previousJobs, JOBS);
+    }
+    saveStoredJobAlertSignature(nextSignature);
     if (Array.isArray(snapshot.assignments) && snapshot.assignments.length) {
       S.assigns = snapshot.assignments.map(a => ({
         jid: a.job_id,
@@ -1697,6 +1915,18 @@ async function hydrateBackendState() {
     });
     purgePlaceholderOfflineWorkers();
     persistStoredOfflineWorkers();
+    const backendTransactions = Array.isArray(snapshot.walletTransactions) ? snapshot.walletTransactions : [];
+    const storedTransactions = loadStoredPaymentTransactions();
+    const mergedTransactions = [...backendTransactions, ...storedTransactions]
+      .map(normalizePaymentTransaction)
+      .filter(Boolean);
+    const seenTransactions = new Set();
+    PAYMENT_TRANSACTIONS = mergedTransactions.filter(tx => {
+      if (seenTransactions.has(tx.id)) return false;
+      seenTransactions.add(tx.id);
+      return true;
+    });
+    saveStoredPaymentTransactions(PAYMENT_TRANSACTIONS);
     USERS = {
       worker: mergeUserProfile(USERS.worker, workerProfile),
       employer: mergeUserProfile(USERS.employer, employerProfile),
@@ -2109,7 +2339,7 @@ function isValidPhoneInput(value) {
 
 async function sendOTP() {
   const email = document.getElementById('login-email-input')?.value?.trim() || '';
-  const p = composePhoneWithCountry('phone-input', 'phone-country-code');
+  const p = composePhoneWithCountry('login-phone-input', 'phone-country-code');
   if (!email) { toast(t('toast.enterEmail')); return; }
   if (!/^\S+@\S+\.\S+$/.test(email)) { toast(t('toast.enterValidEmail')); return; }
   if (!isValidPhoneInput(p)) { toast(t('toast.enterValidPhone')); return; }
@@ -2120,7 +2350,7 @@ async function sendOTP() {
       const remote = await BACKEND.loadProfileByPhone(p);
       if (!remote) {
         toast('Account not found. Please create account first.');
-        const signupPhone = document.getElementById('s-phone');
+        const signupPhone = document.getElementById('signup-phone-input');
         if (signupPhone) signupPhone.value = p;
         const signupEmail = document.getElementById('s-email');
         if (signupEmail) signupEmail.value = email;
@@ -2164,7 +2394,7 @@ async function verifyOTP() {
     const remote = await BACKEND.loadProfileByPhone(phone);
     if (!remote) {
       toast('Account not found. Please create account first.');
-      const signupPhone = document.getElementById('s-phone');
+      const signupPhone = document.getElementById('signup-phone-input');
       if (signupPhone) signupPhone.value = phone;
       pg('page-signup');
       return;
@@ -2197,7 +2427,7 @@ function syncOtpVerificationState() {
 
 async function signup() {
   const n  = document.getElementById('s-name').value.trim();
-  const p  = composePhoneWithCountry('s-phone', 'signup-country-code');
+  const p  = composePhoneWithCountry('signup-phone-input', 'signup-country-code');
   const eRaw  = document.getElementById('s-email').value.trim();
   const e  = eRaw.toLowerCase();
   const l  = document.getElementById('s-loc').value.trim();
@@ -2241,7 +2471,27 @@ async function signup() {
   login(S.role || 'worker', null, profile);
 }
 
-function demoLogin() { login(S.role); }
+function demoLogin() {
+  const role = S.role || 'worker';
+  if (role === 'employer') {
+    const demoProfile = {
+      id: 'demo-employer',
+      role: 'employer',
+      name: 'Employer Demo',
+      phone: '9990000000',
+      email: 'employer.demo@wapp.local',
+      loc: 'Demo City',
+      ctype: 'organization',
+      walletBalance: 2000,
+      isDemo: true
+    };
+    seedEmployerDemoWallet(demoProfile);
+    login(role, null, demoProfile);
+    toast('Demo wallet loaded with ₹2000', 'ok');
+    return;
+  }
+  login(role);
+}
 
 function wappNext(el, i) {
   el.value = el.value.toUpperCase();
@@ -2656,7 +2906,7 @@ async function deleteEmployerJob(jobId) {
     return;
   }
 
-  toast('Job deleted', 'ok');
+  toast(`Job deleted: ${getJobTitle(job) || job.title}`, 'info');
   if (document.getElementById('page-apps')?.classList.contains('active') || document.getElementById('page-applicant-profile')?.classList.contains('active') || document.getElementById('page-detail')?.classList.contains('active')) {
     pg('page-employer', { skipPrev: true });
     return;
@@ -2795,6 +3045,7 @@ function completeJob(jobId) {
   const assign = getCurrentUserAssignment(job);
   if (!assign) return;
   BACKEND.settleJobPayment(jobId, assign.wid).then(result => {
+    recordSettlementTransactions(job, result);
     assign.status = 'done';
     if (job) job.status = 'completed';
     if (result?.worker && S.role === 'worker' && result.worker.phone === S.user?.phone) {
@@ -3000,7 +3251,7 @@ function postJob() {
   document.getElementById('post-location').value = '';
   S.postLocationPin = null;
   syncPostLocationUI();
-  toast(t('post.jobPosted'), 'ok');
+  toast(`Job posted: ${newJob.title}`, 'ok');
   pg('page-employer');
   populateMateJobs();
 }
@@ -3902,7 +4153,7 @@ function renderEmployerBank() {
 }
 
 function renderEmployerHistory() {
-  const rows = [];
+  const rows = getPaymentHistoryEntries('employer');
   return `
     <div class="st" style="margin-bottom:12px">Transaction History</div>
     ${rows.length ? rows.map(r=>`
@@ -4034,25 +4285,14 @@ function renderWorkerBank() {
 }
 
 function renderWorkerHistory() {
-  const me = normalizeName(currentApplicantName());
-  const rows = S.assigns
-    .filter(a => normalizeName(a.name) === me && a.status === 'done')
-    .map(a => {
-      const job = JOBS.find(j => j.id === a.jid) || EJOBS.find(j => j.id === a.jid);
-      const amount = Math.round(Number(job?.pay || 0) * 0.95);
-      return {
-        label: `${job ? getJobTitle(job) : t('job.unknown')} ${t('mate.done').toLowerCase()}`,
-        time: t('common.justNow'),
-        amt: `+₹${amount}`
-      };
-    });
+  const rows = getPaymentHistoryEntries('worker');
   return `
     <div class="st" style="margin-bottom:12px">${lt('payment.earningsHistoryHeading', 'Earnings History')}</div>
     ${rows.length ? rows.map(r=>`
     <div class="jc" style="margin-bottom:10px">
       <div class="jct">
         <div><div class="jt">${r.label}</div><div class="je">${r.time}</div></div>
-        <span class="badge bg">${r.amt}</span>
+        <span class="badge ${r.type === 'debit' || r.type === 'fee' ? 'br' : 'bg'}">${r.amt}</span>
       </div>
     </div>`).join('') : `<div class="empty" style="padding:28px 20px"><i class="bi bi-wallet2"></i><div class="et">${lt('payment.noEarningsYet', 'No earnings yet')}</div></div>`}
     <div class="ic" style="margin-top:4px;font-size:12px">
@@ -4396,6 +4636,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   syncBrowseFilterButtonState();
   syncOtpVerificationState();
   setInterval(refreshApplicantViewsIfNeeded, 30000);
+  setInterval(() => {
+    if (S.role === 'worker' && document.visibilityState === 'visible') {
+      void hydrateBackendState();
+    }
+  }, 60000);
   syncSignupLocationUI();
   syncPostLocationUI();
   initInteractiveMotion();
