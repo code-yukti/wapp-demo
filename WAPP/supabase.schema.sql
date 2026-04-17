@@ -19,6 +19,7 @@ create table if not exists public.profiles (
   jobs_done integer not null default 0,
   rating numeric(3,2) not null default 0,
   score integer not null default 0,
+  wallet_balance numeric(12,2) not null default 0,
   ctype text,
   organization_name text,
   primary_skill text,
@@ -116,6 +117,20 @@ create table if not exists public.payment_methods (
   unique (role, phone, method_type)
 );
 
+create table if not exists public.wallet_transactions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null check (role in ('worker', 'employer', 'mate')),
+  job_id text,
+  amount numeric(12,2) not null,
+  type text not null check (type in ('credit', 'debit', 'commission')),
+  description text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists wallet_transactions_profile_id_idx on public.wallet_transactions(profile_id);
+create index if not exists wallet_transactions_job_id_idx on public.wallet_transactions(job_id);
+
 create index if not exists jobs_owner_phone_idx on public.jobs(owner_phone);
 create index if not exists jobs_status_idx on public.jobs(status);
 create index if not exists applications_job_id_idx on public.applications(job_id);
@@ -134,6 +149,7 @@ alter table public.applications enable row level security;
 alter table public.ratings enable row level security;
 alter table public.assignments enable row level security;
 alter table public.payment_methods enable row level security;
+alter table public.wallet_transactions enable row level security;
 
 drop policy if exists "demo read profiles" on public.profiles;
 drop policy if exists "demo write profiles" on public.profiles;
@@ -149,6 +165,8 @@ drop policy if exists "demo read assignments" on public.assignments;
 drop policy if exists "demo write assignments" on public.assignments;
 drop policy if exists "demo read payment_methods" on public.payment_methods;
 drop policy if exists "demo write payment_methods" on public.payment_methods;
+drop policy if exists "demo read wallet_transactions" on public.wallet_transactions;
+drop policy if exists "demo write wallet_transactions" on public.wallet_transactions;
 
 create policy "demo read profiles" on public.profiles for select using (true);
 create policy "demo write profiles" on public.profiles for insert with check (true);
@@ -184,6 +202,11 @@ create policy "demo read payment_methods" on public.payment_methods for select u
 create policy "demo write payment_methods" on public.payment_methods for insert with check (true);
 create policy "demo update payment_methods" on public.payment_methods for update using (true) with check (true);
 create policy "demo delete payment_methods" on public.payment_methods for delete using (true);
+
+create policy "demo read wallet_transactions" on public.wallet_transactions for select using (true);
+create policy "demo write wallet_transactions" on public.wallet_transactions for insert with check (true);
+create policy "demo update wallet_transactions" on public.wallet_transactions for update using (true) with check (true);
+create policy "demo delete wallet_transactions" on public.wallet_transactions for delete using (true);
 
 create or replace function public.touch_updated_at()
 returns trigger

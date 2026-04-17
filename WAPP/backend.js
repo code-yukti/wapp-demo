@@ -22,6 +22,7 @@
       jobs: toNumber(row.jobs_done, 0),
       rating: toNumber(row.rating, 0),
       score: toNumber(row.score, 0),
+      walletBalance: toNumber(row.wallet_balance, 0),
       code: row.code || '',
       device: row.device_id || '',
       ctype: row.ctype || 'individual',
@@ -294,6 +295,7 @@
       jobs_done: toNumber(profile.jobs, 0),
       rating: toNumber(profile.rating, 0),
       score: toNumber(profile.score, 0),
+      ...(profile.walletBalance !== undefined ? { wallet_balance: toNumber(profile.walletBalance, 0) } : {}),
       ctype: profile.ctype || null,
       organization_name: profile.organizationName || null,
       primary_skill: profile.skill || null,
@@ -458,6 +460,106 @@
     return mapProfile(data);
   }
 
+  async function settleJobPayment(jobId, workerId) {
+    if (!client || !jobId || !workerId) return null;
+    const job = await safeQuery(client.from('jobs').select('*').eq('id', jobId).maybeSingle());
+    if (!job) throw new Error('Job not found');
+
+    const assignment = await safeQuery(
+      client.from('assignments').select('*').eq('job_id', jobId).eq('worker_id', workerId).maybeSingle()
+    );
+    if (!assignment) throw new Error('Assignment not found');
+
+    const employer = await safeQuery(
+      client.from('profiles').select('*').eq('phone', job.owner_phone).maybeSingle()
+    );
+    if (!employer) throw new Error('Employer profile not found');
+
+    const isUuid = typeof workerId === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(workerId);
+    const workerQueryBase = client.from('profiles').select('*');
+    const worker = await safeQuery(
+      isUuid
+        ? workerQueryBase.eq('id', workerId).maybeSingle()
+        : workerQueryBase.eq('phone', workerId).maybeSingle()
+    );
+    if (!worker) throw new Error('Worker profile not found');
+
+    const jobPay = toNumber(job.pay, 0);
+    const workerShare = Math.round(jobPay * 0.95);
+    const commission = Math.round(jobPay * 0.05);
+    const newEmployerBalance = toNumber(employer.wallet_balance, 0) - jobPay;
+    if (newEmployerBalance < 0) throw new Error('Insufficient employer wallet balance');
+    const newWorkerBalance = toNumber(worker.wallet_balance, 0) + workerShare;
+
+    const { data: employerData, error: employerError } = await client
+      .from('profiles')
+      .update({ wallet_balance: newEmployerBalance })
+      .eq('phone', employer.phone)
+      .select('*')
+      .maybeSingle();
+    if (employerError) throw employerError;
+
+    const { data: workerData, error: workerError } = await client
+      .from('profiles')
+      .update({ wallet_balance: newWorkerBalance })
+      .eq('id', worker.id)
+      .select('*')
+      .maybeSingle();
+    if (workerError) throw workerError;
+
+    await safeQuery(
+      client.from('wallet_transactions').insert([
+        {
+          profile_id: employerData.id,
+          role: 'employer',
+          job_id: jobId,
+          amount: -jobPay,
+          type: 'debit',
+          description: `Paid ${workerShare} to ${worker.name} for ${job.title}`
+        },
+        {
+          profile_id: workerData.id,
+          role: 'worker',
+          job_id: jobId,
+          amount: workerShare,
+          type: 'credit',
+          description: `Earnings for ${job.title}`
+        },
+        {
+          profile_id: employerData.id,
+          role: 'employer',
+          job_id: jobId,
+          amount: commission,
+          type: 'commission',
+          description: `Platform fee for ${job.title}`
+        }
+      ])
+    );
+
+    const { data: jobData, error: jobError } = await client
+      .from('jobs')
+      .update({ status: 'completed' })
+      .eq('id', jobId)
+      .select('*')
+      .maybeSingle();
+    if (jobError) throw jobError;
+
+    const { data: assignmentData, error: assignmentError } = await client
+      .from('assignments')
+      .update({ status: 'done' })
+      .eq('job_id', jobId)
+      .eq('worker_id', workerId)
+      .select('*')
+      .maybeSingle();
+    if (assignmentError) throw assignmentError;
+
+    return {
+      assignment: assignmentData,
+      employer: mapProfile(employerData),
+      worker: mapProfile(workerData)
+    };
+  }
+
   window.WappBackend = {
     enabled,
     client,
@@ -468,6 +570,7 @@
     saveApplication,
     saveAssignment,
     updateAssignmentStatus,
+    settleJobPayment,
     saveRating,
     savePaymentMethod,
     saveOfflineWorker,

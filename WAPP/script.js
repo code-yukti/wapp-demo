@@ -241,6 +241,7 @@ const TRANSLATIONS = {
     'job.statusApplied': 'Applied',
     'job.statusAssigned': 'Assigned',
     'job.statusCompleted': 'Completed',
+    'job.completeJob': 'Complete',
     'job.statusOpen': 'Open',
     'job.about': 'About',
     'job.details': 'Details',
@@ -436,6 +437,9 @@ const TRANSLATIONS = {
   'job.empty': 'कोई जॉब नहीं मिला',
   'job.emptyHint': 'कुछ और खोज कर देखें',
   'job.applyNow': 'अभी आवेदन करें',
+  'job.statusAssigned': 'चुना गया',
+  'job.statusCompleted': 'पूरा हुआ',
+  'job.completeJob': 'पूरा करें',
   'applicants.title': 'आवेदक',
   'applicants.noApplicants': 'अभी कोई आवेदक नहीं है',
   'applicants.for': 'जॉब: {title}',
@@ -578,6 +582,9 @@ const TRANSLATIONS = {
   'job.empty': 'কোনো জব পাওয়া যায়নি',
   'job.emptyHint': 'অন্য কিছু খুঁজে দেখুন',
   'job.applyNow': 'এখনই আবেদন করুন',
+  'job.statusAssigned': 'নিয়োগ করা হয়েছে',
+  'job.statusCompleted': 'সম্পন্ন',
+  'job.completeJob': 'সমাপ্ত',
   'applicants.title': 'আবেদনকারী',
   'applicants.noApplicants': 'এখনও কোনো আবেদনকারী নেই',
   'applicants.for': 'কাজ: {title}',
@@ -1494,6 +1501,19 @@ function currentApplicantName() {
 
 function isCurrentUserApplicant(name) {
   return normalizeName(name) === normalizeName(currentApplicantName());
+}
+
+function getCurrentUserAssignment(job) {
+  if (!job) return null;
+  const userId = String(S.user?.id || '').trim();
+  const userPhone = getCurrentUserPhone();
+  const userName = normalizeName(currentApplicantName());
+  return S.assigns.find(a => {
+    if (a.jid !== job.id) return false;
+    if (userId && String(a.wid) === userId) return true;
+    if (userPhone && normalizePhone(String(a.wid || '')) === normalizePhone(userPhone)) return true;
+    return normalizeName(a.name) === userName;
+  }) || null;
 }
 
 function getCurrentUserPhone() {
@@ -2466,7 +2486,9 @@ function filterJobs(q) {
     const matchesDur = f.dur === 'all' || j.dur === f.dur;
     const matchesOpen = !f.openOnly || j.status === 'open';
     const matchesDist = !Number.isFinite(maxDist) || maxDist <= 0 || Number(j.dist || 0) <= maxDist;
-    return matchesQuery && matchesType && matchesDur && matchesOpen && matchesDist;
+    const isCompletedGlobally = ['completed', 'done'].includes(String(j.status || '').toLowerCase());
+    const notCompletedByUser = !getCurrentUserAssignment(j) || !['completed', 'done'].includes(getCurrentUserAssignment(j)?.status);
+    return matchesQuery && matchesType && matchesDur && matchesOpen && matchesDist && notCompletedByUser && !isCompletedGlobally;
   }));
   syncBrowseFilterButtonState();
 }
@@ -2512,11 +2534,18 @@ function renderJobDetail(id) {
       </div></div>`;
   const applied = j.apps.includes('You');
   const appliedByCurrent = j.apps.some(isCurrentUserApplicant);
+  const currentAssignment = getCurrentUserAssignment(j);
+  const isAssigned = Boolean(currentAssignment && currentAssignment.status === 'assigned');
+  const isCompleted = Boolean(currentAssignment && (currentAssignment.status === 'completed' || currentAssignment.status === 'done'));
   let foot = '';
   if (S.role === 'mate') {
     foot = `<div style="display:flex;gap:10px"><button class="btn btn-out-m btn-sm" onclick="back()"><i class="bi bi-arrow-left"></i> ${t('job.back')}</button><button class="btn btn-m" onclick="pg('page-mate')"><i class="bi bi-cpu"></i> ${t('job.nfcAssign')}</button></div>`;
   } else if (S.role === 'employer') {
     foot = `<button class="btn btn-p" onclick="openApplicantsPage('${j.id}', 'page-detail')">${t('job.viewApplicants', { count: j.apps.length })}</button>`;
+  } else if (isCompleted) {
+    foot = `<button class="btn btn-out btn-sm" disabled style="opacity:.6">${t('job.statusCompleted')}</button>`;
+  } else if (isAssigned) {
+    foot = `<button class="btn btn-p" id="apply-btn" onclick="completeJob('${j.id}')">${t('job.completeJob')}</button>`;
   } else {
     foot = `<button class="btn btn-p" id="apply-btn" onclick="applyJob()" ${appliedByCurrent ? 'disabled style="opacity:.6"' : ''}>${appliedByCurrent ? t('job.statusApplied') : t('job.applyNow')}</button>`;
   }
@@ -2554,16 +2583,16 @@ function renderMyJobs() {
     return;
   }
   const assignedJobs = applied.filter(j => {
-    const assign = S.assigns.find(a => a.jid === j.id && a.wid === S.user.id);
+    const assign = getCurrentUserAssignment(j);
     return assign && assign.status === 'assigned';
   });
   if (assignedJobs.length > 0) {
     toast(`You have ${assignedJobs.length} job${assignedJobs.length > 1 ? 's' : ''} assigned to you!`, 'info');
   }
   el.innerHTML = applied.map(j => {
-    const assign = S.assigns.find(a => a.jid === j.id && a.wid === S.user.id);
+    const assign = getCurrentUserAssignment(j);
     const isAssigned = assign && assign.status === 'assigned';
-    const isCompleted = assign && assign.status === 'completed';
+    const isCompleted = assign && (assign.status === 'completed' || assign.status === 'done');
     const statusText = isCompleted ? t('job.statusCompleted') : isAssigned ? t('job.statusAssigned') : t('job.statusApplied');
     const badgeClass = isCompleted ? 'badge bg' : isAssigned ? 'badge bb' : 'badge ba';
     const actionButton = isAssigned ? `<button class="btn btn-p btn-sm" onclick="event.stopPropagation();completeJob('${j.id}')"><i class="bi bi-check-circle"></i> Complete</button>` : `<button class="btn btn-out btn-sm" onclick="event.stopPropagation();rateModal('${j.id}')" ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? 'disabled style="opacity:.6;cursor:not-allowed"' : ''}><i class="bi bi-star"></i> ${getCurrentUserRatingForJob(j.id, j.ownerPhone || '', 'employer') ? t('rate.rated') : lt('rate.rateEmployer', 'Rate Employer')}</button>`;
@@ -2730,8 +2759,23 @@ function hire(name, index = 0) {
     hiredAt: now,
     expiresAt: now + HIRE_CANCEL_WINDOW_MS
   });
+  const workerId = applicant.id || applicant.phone || name;
+  const existingAssign = S.assigns.find(a => a.jid === j.id && a.wid === workerId);
+  if (existingAssign) {
+    existingAssign.status = 'assigned';
+    existingAssign.name = name;
+    existingAssign.ts = now;
+  } else {
+    S.assigns.push({
+      jid: j.id,
+      wid: workerId,
+      name,
+      status: 'assigned',
+      ts: now
+    });
+  }
   // Save assignment to backend
-  BACKEND.saveAssignment(j.id, applicant.id || applicant.phone, name, S.user.id).catch(err => console.error('Failed to save assignment:', err));
+  BACKEND.saveAssignment(j.id, workerId, name, S.user.id).catch(err => console.error('Failed to save assignment:', err));
   toast(t('job.selected', { name }), 'ok');
   renderApplicants();
   if (S.applicantView && normalizeName(S.applicantView.name) === normalizeName(name)) renderApplicantProfile();
@@ -2747,15 +2791,31 @@ function cancelHire() {
 }
 
 function completeJob(jobId) {
-  const assign = S.assigns.find(a => a.jid === jobId && a.wid === S.user.id);
+  const job = [...JOBS, ...EJOBS].find(item => item.id === jobId);
+  const assign = getCurrentUserAssignment(job);
   if (!assign) return;
-  BACKEND.updateAssignmentStatus(jobId, S.user.id, 'completed').then(() => {
-    assign.status = 'completed';
-    toast('Job completed!', 'ok');
+  BACKEND.settleJobPayment(jobId, assign.wid).then(result => {
+    assign.status = 'done';
+    if (job) job.status = 'completed';
+    if (result?.worker && S.role === 'worker' && result.worker.phone === S.user?.phone) {
+      S.user = mergeUserProfile(S.user, result.worker);
+      persistAuthSession();
+    }
+    if (result?.employer && S.role === 'employer' && result.employer.phone === S.user?.phone) {
+      S.user = mergeUserProfile(S.user, result.employer);
+      persistAuthSession();
+    }
+    toast(t('job.statusCompleted'), 'ok');
     renderMyJobs();
+    filterJobs(S.browseQuery || ''); // Refresh browse jobs to hide completed job
+    syncEmployerJobs();
+    if (document.querySelector('.page.active')?.id === 'page-payment') {
+      renderPayment();
+    }
+    pg('page-myjobs');
   }).catch(err => {
     console.error('Failed to complete job:', err);
-    toast('Failed to complete job. Try again.');
+    toast(err?.message || 'Failed to complete job. Try again.');
   });
 }
 
@@ -3055,7 +3115,7 @@ function renderMateActive() {
   }
   el.innerHTML = S.assigns.map(a => {
     const j = JOBS.find(x=>x.id===a.jid);
-    const payout = Math.round((j?.pay||0)*0.9);
+    const payout = Math.round((j?.pay||0)*0.95);
     return `<div class="aac">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
         <div><div style="font-weight:700;font-size:15px">${ICONS[j?.type]||''} ${j ? getJobTitle(j) : t('job.unknown')}</div>
@@ -3721,7 +3781,7 @@ function getWorkerPaymentStats() {
   let doneCount = 0;
   myAssignments.forEach(a => {
     const job = JOBS.find(j => j.id === a.jid) || EJOBS.find(j => j.id === a.jid);
-    const payout = Math.round(Number(job?.pay || 0) * 0.9);
+    const payout = Math.round(Number(job?.pay || 0) * 0.95);
     if (a.status === 'done') {
       paidOut += payout;
       doneCount += 1;
@@ -3742,19 +3802,29 @@ function getEmployerPaymentStats() {
   const funded = myJobs.reduce((sum, j) => sum + Number(j?.pay || 0), 0);
   const openJobs = myJobs.filter(j => j.status === 'open').length;
   const inProgressJobs = myJobs.filter(j => j.status !== 'open').length;
-  const escrowBalance = Math.max(0, funded - Math.round(funded * 0.08));
-  return { escrowBalance, funded, openJobs, inProgressJobs };
+
+  // Calculate paid amount from completed assignments (worker gets 95% of job pay)
+  const paidAmount = S.assigns
+    .filter(a => a.status === 'done' && myJobs.some(j => j.id === a.jid))
+    .reduce((sum, a) => {
+      const job = myJobs.find(j => j.id === a.jid);
+      return sum + Math.round(Number(job?.pay || 0) * 0.95); // Worker gets 95%
+    }, 0);
+
+  const escrowBalance = Math.max(0, funded - Math.round(funded * 0.05) - paidAmount);
+  return { escrowBalance, funded, openJobs, inProgressJobs, paidAmount };
 }
 
 // ── EMPLOYER PAYMENT ────────────────────────────────────────────────
 function renderEmployerPayment() {
   const stats = getEmployerPaymentStats();
+  const walletBalance = typeof S.user?.walletBalance === 'number' ? S.user.walletBalance : stats.escrowBalance;
   return `
     <!-- Balance summary -->
     <div class="pay-balance-card">
-      <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.72;margin-bottom:6px">Escrow Balance</div>
-      <div style="font-size:36px;font-weight:800;letter-spacing:-1px">₹${stats.escrowBalance}</div>
-      <div style="font-size:12px;opacity:.65;margin-top:4px">Platform commission: 8% per job</div>
+      <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.72;margin-bottom:6px">Wallet Balance</div>
+      <div style="font-size:36px;font-weight:800;letter-spacing:-1px">₹${walletBalance}</div>
+      <div style="font-size:12px;opacity:.65;margin-top:4px">Platform commission: 5% per job</div>
       <button class="btn btn-p" style="margin-top:16px;padding:10px 0;font-size:14px" onclick="openAddFundsModal()">
         <i class="bi bi-plus-circle" style="margin-right:6px"></i>Add Funds
       </button>
@@ -3762,6 +3832,7 @@ function renderEmployerPayment() {
 
     <div class="srow" style="margin:18px 0 0">
       <div class="sb"><div class="sv">₹${stats.funded}</div><div class="sl">Funded</div></div>
+      <div class="sb"><div class="sv">₹${stats.paidAmount}</div><div class="sl">Paid Out</div></div>
       <div class="sb"><div class="sv">${stats.openJobs}</div><div class="sl">Open Jobs</div></div>
       <div class="sb"><div class="sv">${stats.inProgressJobs}</div><div class="sl">In Progress</div></div>
     </div>
@@ -3854,11 +3925,12 @@ function openAddFundsModal() {
 // ── WORKER PAYMENT ──────────────────────────────────────────────────
 function renderWorkerPayment() {
   const stats = getWorkerPaymentStats();
+  const walletBalance = typeof S.user?.walletBalance === 'number' ? S.user.walletBalance : stats.totalEarned;
   return `
     <!-- Earnings summary -->
     <div class="pay-balance-card pay-balance-worker">
       <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.72;margin-bottom:6px">${lt('payment.totalEarned', 'Total Earned')}</div>
-      <div style="font-size:36px;font-weight:800;letter-spacing:-1px">₹${stats.totalEarned}</div>
+      <div style="font-size:36px;font-weight:800;letter-spacing:-1px">₹${walletBalance}</div>
       <div style="font-size:12px;opacity:.65;margin-top:4px">${lt('payment.nextPayout', 'Next payout: within 24 hrs of job completion')}</div>
     </div>
 
@@ -3967,7 +4039,7 @@ function renderWorkerHistory() {
     .filter(a => normalizeName(a.name) === me && a.status === 'done')
     .map(a => {
       const job = JOBS.find(j => j.id === a.jid) || EJOBS.find(j => j.id === a.jid);
-      const amount = Math.round(Number(job?.pay || 0) * 0.9);
+      const amount = Math.round(Number(job?.pay || 0) * 0.95);
       return {
         label: `${job ? getJobTitle(job) : t('job.unknown')} ${t('mate.done').toLowerCase()}`,
         time: t('common.justNow'),
