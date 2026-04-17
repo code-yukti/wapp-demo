@@ -1,0 +1,18 @@
+# Ignore environment files containing secrets
+.env
+.env.local
+.env.*.local
+
+# Node / package manager files
+node_modules/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Build and editor artifacts
+dist/
+build/
+out/
+.DS_Store
+*.log
+.vscode/
