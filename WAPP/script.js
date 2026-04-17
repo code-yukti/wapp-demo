@@ -184,7 +184,7 @@ const TRANSLATIONS = {
     'mate.demoAsMate': 'Demo as Mate',
     'mate.brand': 'wapp-mate',
     'mate.hi': 'Hi,',
-    'mate.commandTitle': 'Volunteer Command',
+    'mate.commandTitle': 'wapp-mate Command',
     'mate.online': 'ESP32-NFC online',
     'mate.assigned': 'Assigned',
     'mate.completed': 'Completed',
@@ -193,7 +193,7 @@ const TRANSLATIONS = {
     'mate.assignHelp': "Select an open job and tap a worker's NFC card to assign them.",
     'mate.selectJob': 'Select Job to Assign',
     'mate.selectJobOption': 'Select a job',
-    'mate.activeChain': 'Active Volunteer Chain',
+    'mate.activeChain': 'Active wapp-mate Chain',
     'mate.selectAbove': 'Select a job above',
     'mate.workersTap': 'Workers - Tap NFC',
     'mate.tapAssign': 'Tap & Assign',
@@ -209,7 +209,7 @@ const TRANSLATIONS = {
     'mate.confirmDone': 'Confirm done',
     'mate.payoutPending': 'Worker payout Rs{payout} - Incentive Rs20 pending',
     'payment.incentiveProgram': 'Incentive Program',
-    'payment.volunteersEarn': 'Volunteers earn incentives for community service',
+    'payment.volunteersEarn': 'wapp-mates earn incentives for community service',
     'payment.earned': 'Earned',
     'payment.pending': 'Pending',
     'payment.perJob': 'Per Job',
@@ -301,7 +301,7 @@ const TRANSLATIONS = {
     'common.cancel': 'Cancel',
     'common.worker': 'Worker',
     'common.employer': 'Employer',
-    'common.volunteer': 'wapp-mate Volunteer',
+    'common.volunteer': 'wapp-mate',
     'common.justNow': 'just now',
     'jobType.farm': 'Farm',
     'jobType.shop': 'Shop',
@@ -378,8 +378,8 @@ const TRANSLATIONS = {
   'role.worker.desc': 'रोज़ के जॉब और गिग्स पास में ढूंढो',
   'role.employer.title': 'मुझे वर्कर्स चाहिए',
   'role.employer.desc': 'जॉब पोस्ट करो और भरोसेमंद लोकल लोगों को हायर करो',
-  'role.mate.badge': 'स्वयंसेवक',
-  'role.mate.desc': 'कम्युनिटी स्वयंसेवक - सुरक्षित वप्प कोड एक्सेस',
+  'role.mate.badge': 'wapp-mate',
+  'role.mate.desc': 'कम्युनिटी wapp-mate - सुरक्षित वप्प कोड एक्सेस',
 
   'login.changeRole': 'रोल पर वापस',
   'login.signIn': 'साइन इन',
@@ -885,8 +885,9 @@ function getPaymentHistoryEntries(role) {
 function recordSettlementTransactions(job, settlement) {
   if (!job || !settlement) return;
   const jobPay = Number(job.pay || 0);
-  const workerShare = Math.round(jobPay * 0.95);
   const commission = Math.round(jobPay * 0.05);
+  const totalEmployerDebit = jobPay + commission; // employer pays job pay + 5% fee on top
+  const workerShare = jobPay;                     // worker receives full job pay
   const employer = settlement.employer || {};
   const worker = settlement.worker || {};
   const workerCode = String(worker.workerCode || worker.code || '').trim();
@@ -898,7 +899,7 @@ function recordSettlementTransactions(job, settlement) {
       id: `tx-${job.id}-employer-debit`,
       role: 'employer',
       type: 'debit',
-      amount: -jobPay,
+      amount: -totalEmployerDebit,
       label: `${job.title} completed`,
       time: 'just now',
       jobId: job.id,
@@ -911,8 +912,8 @@ function recordSettlementTransactions(job, settlement) {
       id: `tx-${job.id}-employer-fee`,
       role: 'employer',
       type: 'commission',
-      amount: commission,
-      label: `Platform fee for ${job.title}`,
+      amount: -commission,
+      label: `Platform fee (5%) for ${job.title}`,
       time: 'just now',
       jobId: job.id,
       profileId: String(employer.id || ''),
@@ -999,7 +1000,7 @@ const MATE_DEVICE_ID = 'WMD001';
 function createEmptyUser(role, overrides = {}) {
   const isMate = role === 'mate';
   const isEmployer = role === 'employer';
-  const name = isMate ? 'Volunteer' : isEmployer ? 'Employer' : 'Worker';
+  const name = isMate ? 'wapp-mate' : isEmployer ? 'Employer' : 'Worker';
   const loc = '';
   return {
     role,
@@ -2425,6 +2426,44 @@ function syncOtpVerificationState() {
   btn.style.cursor = OTP_LOGIN_BLOCKED ? 'not-allowed' : 'pointer';
 }
 
+// ── Signup Profile Photo ────────────────────────────────────────────
+let _signupPhotoData = null;
+
+function handleSignupPhotoSelect(input) {
+  const file = input.files?.[0];
+  if (!file || !file.type.startsWith('image/')) { toast('Please select a valid image.'); return; }
+  if (file.size > 5 * 1024 * 1024) { toast('Photo too large. Max 5 MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _signupPhotoData = e.target.result;
+    const icon = document.getElementById('signup-avatar-icon');
+    const img  = document.getElementById('signup-avatar-img');
+    const wrap = document.querySelector('.signup-avatar-wrap');
+    if (icon) icon.style.display = 'none';
+    if (img)  { img.src = _signupPhotoData; img.style.display = 'block'; }
+    if (wrap) wrap.classList.add('has-photo');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Profile page avatar photo change ──────────────────────────────────
+function updateProfilePhoto(input) {
+  const file = input?.files?.[0];
+  if (!file || !file.type.startsWith('image/')) { toast('Please select a valid image.'); return; }
+  if (file.size > 5 * 1024 * 1024) { toast('Photo too large. Max 5 MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    if (S.user) {
+      S.user.photo = e.target.result;
+      persistAuthSession();
+      applyUser();       // re-render profile avatar immediately
+      syncHeaderAvatar(); // update header button too
+      toast('Profile photo updated!', 'ok');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 async function signup() {
   const n  = document.getElementById('s-name').value.trim();
   const p  = composePhoneWithCountry('signup-phone-input', 'signup-country-code');
@@ -2460,12 +2499,15 @@ async function signup() {
   profile.phone = p;
   profile.email = e;
   profile.loc = l;
+  // Attach profile photo if user uploaded one
+  if (_signupPhotoData) { profile.photo = _signupPhotoData; _signupPhotoData = null; }
   if (S.role === 'worker') profile.skill = document.getElementById('s-skillval').value.trim();
   if (S.role !== 'worker') profile.need = document.getElementById('s-needval').value.trim();
   if (S.role !== 'worker') profile.reg = document.getElementById('s-regval').value.trim();
   try {
+    const pendingPhoto = profile.photo; // save before backend strips it
     const saved = await BACKEND.upsertProfile(profile);
-    if (saved) profile = saved;
+    if (saved) profile = { ...saved, photo: pendingPhoto || saved.photo }; // re-attach photo
   } catch (error) {}
   toast(t('toast.accountCreated'), 'ok');
   login(S.role || 'worker', null, profile);
@@ -2523,7 +2565,7 @@ function login(role, code, profile) {
   S.role = role;
   const key = role === 'worker' ? 'worker' : role === 'employer' ? 'employer' : 'mate';
   const defaults = createEmptyUser(role, {
-    name: role === 'worker' ? 'Worker' : role === 'employer' ? 'Employer' : 'Volunteer',
+    name: role === 'worker' ? 'Worker' : role === 'employer' ? 'Employer' : 'wapp-mate',
     phone: role === 'mate'
       ? composePhoneWithCountry('mate-phone', 'mate-country-code')
       : normalizePhoneInput(S.pendingPhone)
@@ -2564,12 +2606,21 @@ function syncHeaderAvatar() {
 
   buttons.forEach(btn => {
     if (letter) {
-      applyAvatarPalette(btn, S.user);
       btn.classList.add('hdr-avatar');
-      btn.textContent = letter;
-      btn.style.removeProperty('border-color');
       btn.setAttribute('aria-label', 'Profile');
       btn.title = S.user?.name || 'Profile';
+      btn.style.removeProperty('border-color');
+      if (S.user?.photo) {
+        // Show actual profile photo in header
+        btn.innerHTML = `<img src="${S.user.photo}" alt="${S.user.name}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block">`;
+        btn.style.padding = '0';
+        btn.style.overflow = 'hidden';
+      } else {
+        applyAvatarPalette(btn, S.user);
+        btn.textContent = letter;
+        btn.style.removeProperty('padding');
+        btn.style.removeProperty('overflow');
+      }
     } else {
       btn.classList.remove('hdr-avatar');
       btn.innerHTML = '<i class="bi bi-person-circle"></i>';
@@ -2589,8 +2640,15 @@ function applyUser() {
   const pfAvatar = document.getElementById('pf-av');
   const hero = document.getElementById('pf-hero');
   if (pfAvatar) {
-    pfAvatar.textContent = u.av;
-    applyAvatarPalette(pfAvatar, u);
+    if (u.photo) {
+      pfAvatar.classList.add('av-photo');
+      pfAvatar.innerHTML = `<img src="${u.photo}" alt="${u.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`;
+    } else {
+      pfAvatar.classList.remove('av-photo');
+      pfAvatar.innerHTML = '';
+      pfAvatar.textContent = u.av;
+      applyAvatarPalette(pfAvatar, u);
+    }
   }
   if (hero) applyAvatarPalette(hero, u);
   document.getElementById('pf-name').textContent   = u.name;
@@ -2723,6 +2781,18 @@ function resetBrowseFilters() {
   filterJobs(S.browseQuery || '');
 }
 
+// Returns true if a job is completed/done — checks both the job status field
+// and whether any assignment in S.assigns is marked done for this job.
+// This ensures the UI hides jobs immediately after completion even before
+// the DB status syncs back.
+function isJobDone(job) {
+  if (!job) return false;
+  const statusDone = ['completed', 'done'].includes(String(job.status || '').toLowerCase());
+  if (statusDone) return true;
+  // Also treat as done if any assignment for this job is marked done
+  return S.assigns.some(a => a.jid === job.id && ['done', 'completed'].includes(String(a.status || '').toLowerCase()));
+}
+
 function filterJobs(q) {
   S.browseQuery = typeof q === 'string' ? q : (S.browseQuery || '');
   const query = (S.browseQuery || '').toLowerCase();
@@ -2736,9 +2806,9 @@ function filterJobs(q) {
     const matchesDur = f.dur === 'all' || j.dur === f.dur;
     const matchesOpen = !f.openOnly || j.status === 'open';
     const matchesDist = !Number.isFinite(maxDist) || maxDist <= 0 || Number(j.dist || 0) <= maxDist;
-    const isCompletedGlobally = ['completed', 'done'].includes(String(j.status || '').toLowerCase());
-    const notCompletedByUser = !getCurrentUserAssignment(j) || !['completed', 'done'].includes(getCurrentUserAssignment(j)?.status);
-    return matchesQuery && matchesType && matchesDur && matchesOpen && matchesDist && notCompletedByUser && !isCompletedGlobally;
+    // Hide completed jobs entirely from both worker browse and wapp-mate browse
+    if (isJobDone(j)) return false;
+    return matchesQuery && matchesType && matchesDur && matchesOpen && matchesDist;
   }));
   syncBrowseFilterButtonState();
 }
@@ -2795,7 +2865,8 @@ function renderJobDetail(id) {
   } else if (isCompleted) {
     foot = `<button class="btn btn-out btn-sm" disabled style="opacity:.6">${t('job.statusCompleted')}</button>`;
   } else if (isAssigned) {
-    foot = `<button class="btn btn-p" id="apply-btn" onclick="completeJob('${j.id}')">${t('job.completeJob')}</button>`;
+    // Regular worker must upload proof photo; NFC/offline workers bypass this via mateComplete
+    foot = `<button class="btn btn-p" id="apply-btn" onclick="openProofModal('${j.id}')"><i class="bi bi-camera-fill" style="margin-right:6px"></i>${t('job.completeJob')}</button>`;
   } else {
     foot = `<button class="btn btn-p" id="apply-btn" onclick="applyJob()" ${appliedByCurrent ? 'disabled style="opacity:.6"' : ''}>${appliedByCurrent ? t('job.statusApplied') : t('job.applyNow')}</button>`;
   }
@@ -3038,6 +3109,81 @@ function cancelHire() {
   toast(t('applicants.hireCanceled'), 'ok');
   renderApplicants();
   if (document.getElementById('page-applicant-profile')?.classList.contains('active')) renderApplicantProfile();
+}
+
+// ── Work Proof Photo Modal ─────────────────────────────────────────
+// Stores the pending job id and captured photo data URL
+let _proofPendingJobId = null;
+let _proofPhotoData = null;
+
+function openProofModal(jobId) {
+  _proofPendingJobId = jobId;
+  _proofPhotoData = null;
+  // Reset modal UI
+  const area = document.getElementById('proof-upload-area');
+  const placeholder = document.getElementById('proof-placeholder');
+  const preview = document.getElementById('proof-preview');
+  const status = document.getElementById('proof-status');
+  const submitBtn = document.getElementById('proof-submit-btn');
+  const fileInput = document.getElementById('proof-file-input');
+  if (area) area.classList.remove('has-image');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (preview) { preview.src = ''; preview.style.display = 'none'; }
+  if (status) { status.textContent = ''; status.style.display = 'none'; status.className = 'proof-status'; }
+  if (submitBtn) submitBtn.disabled = true;
+  if (fileInput) fileInput.value = '';
+  openModal('proof-modal');
+}
+
+function handleProofImageSelect(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  // Validate it's an image and not too large (10 MB)
+  if (!file.type.startsWith('image/')) {
+    showProofStatus('Please select a valid image file.', 'err');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showProofStatus('Image is too large. Please use a photo under 10 MB.', 'err');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _proofPhotoData = e.target.result;
+    const area = document.getElementById('proof-upload-area');
+    const placeholder = document.getElementById('proof-placeholder');
+    const preview = document.getElementById('proof-preview');
+    const submitBtn = document.getElementById('proof-submit-btn');
+    if (preview) { preview.src = _proofPhotoData; preview.style.display = 'block'; }
+    if (placeholder) placeholder.style.display = 'none';
+    if (area) area.classList.add('has-image');
+    if (submitBtn) submitBtn.disabled = false;
+    showProofStatus('Photo ready. Tap "Confirm & Mark Complete" to finish.', 'ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+function showProofStatus(msg, type) {
+  const el = document.getElementById('proof-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `proof-status ${type}`;
+  el.style.display = 'block';
+}
+
+function submitProofAndComplete() {
+  if (!_proofPhotoData) { showProofStatus('Please upload a photo first.', 'err'); return; }
+  if (!_proofPendingJobId) { toast('No job selected.'); return; }
+  const submitBtn = document.getElementById('proof-submit-btn');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Submitting…'; }
+  // Attach photo data to the assignment before completing
+  const job = [...JOBS, ...EJOBS].find(j => j.id === _proofPendingJobId);
+  const assign = job ? getCurrentUserAssignment(job) : null;
+  if (assign) assign.proofPhoto = _proofPhotoData; // Store on assignment for audit trail
+  closeModal('proof-modal');
+  completeJob(_proofPendingJobId);
+  _proofPendingJobId = null;
+  _proofPhotoData = null;
 }
 
 function completeJob(jobId) {
@@ -3283,8 +3429,9 @@ function populateMateJobs() {
     sel.innerHTML = `<option value="">${t('mate.selectJobOption')}</option><option disabled>${lt('common.loading', 'Loading jobs...')}</option>`;
     return;
   }
+  // Only show jobs that are open AND not already completed via an assignment
   sel.innerHTML = `<option value="">${t('mate.selectJobOption')}</option>` +
-    JOBS.filter(j=>j.status==='open').map(j=>`<option value="${j.id}">${getJobTitle(j)} · ${formatPay(j.pay, j.dur)}</option>`).join('');
+    JOBS.filter(j => j.status === 'open' && !isJobDone(j)).map(j=>`<option value="${j.id}">${getJobTitle(j)} · ${formatPay(j.pay, j.dur)}</option>`).join('');
   if (current && sel.querySelector(`option[value="${current}"]`)) sel.value = current;
 }
 
@@ -3366,7 +3513,7 @@ function renderMateActive() {
   }
   el.innerHTML = S.assigns.map(a => {
     const j = JOBS.find(x=>x.id===a.jid);
-    const payout = Math.round((j?.pay||0)*0.95);
+    const payout = Number(j?.pay || 0); // Worker receives full job pay; employer pays pay + 5% fee on top
     return `<div class="aac">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
         <div><div style="font-weight:700;font-size:15px">${ICONS[j?.type]||''} ${j ? getJobTitle(j) : t('job.unknown')}</div>
@@ -3559,11 +3706,18 @@ async function saveOfflineWorker() {
 function mateComplete(jid, wid) {
   const a = S.assigns.find(x=>x.jid===jid&&x.wid===wid);
   if (a) { a.status='done'; renderMateActive(); }
+  // Mark the job as completed locally so it disappears from browse and mate dropdown immediately
+  const job = JOBS.find(j => j.id === jid);
+  if (job) job.status = 'completed';
   void BACKEND.updateAssignmentStatus(jid, wid, 'done').catch(() => {});
   const el = document.getElementById('m-done'); if(el) el.textContent = parseInt(el.textContent)+1;
   const ee = document.getElementById('m-earn'); if(ee) ee.textContent = 'Rs'+(parseInt((ee.textContent||'').replace(/[^\d]/g,''))+20);
   if (S.role === 'mate' && S.user) syncUserDerivedStats(S.user);
+  // Refresh dropdown and browse so completed job is hidden
+  populateMateJobs();
+  filterJobs(S.browseQuery || '');
   toast(t('job.markedComplete'), 'ok');
+
 }
 
 function setMateScanStatus(message, type = 'idle') {
@@ -3742,28 +3896,69 @@ function pollMateScanLog(requestId) {
   clearInterval(mateScanTimer);
 
   const startedAt = Date.now();
+  let consecutiveNetworkErrors = 0;
+  const MAX_NETWORK_RETRIES = 3; // tolerate brief network blips
+
   mateScanTimer = setInterval(async () => {
+    // ── Timeout check ────────────────────────────────────────────────
     if (Date.now() - startedAt > MATE_SCAN_TIMEOUT_MS) {
       clearInterval(mateScanTimer);
       mateScanTimer = null;
       mateScanRequestId = null;
-      setMateScanStatus('Timed out waiting for the device.', 'error');
+      setMateScanStatus(
+        'Timed out — no card was scanned. Make sure the ESP32 is on and connected, then try again.',
+        'error'
+      );
       setMateScanButtonState('idle');
       return;
     }
 
-    const { data, error } = await client
-      .from('logs')
-      .select('uid,name,scan_time,access_status,job_status,request_id')
-      .eq('request_id', requestId)
-      .order('scan_time', { ascending: false })
-      .limit(1);
+    // ── Poll Supabase for a matching scan log ─────────────────────────
+    let data, error;
+    try {
+      ({ data, error } = await client
+        .from('logs')
+        .select('uid,name,scan_time,access_status,job_status,request_id')
+        .eq('request_id', requestId)
+        .order('scan_time', { ascending: false })
+        .limit(1));
+    } catch (fetchErr) {
+      // fetch() itself threw — usually a network outage or CORS issue
+      consecutiveNetworkErrors++;
+      if (consecutiveNetworkErrors >= MAX_NETWORK_RETRIES) {
+        clearInterval(mateScanTimer);
+        mateScanTimer = null;
+        mateScanRequestId = null;
+        setMateScanStatus(
+          `Network error: ${fetchErr?.message || 'Failed to fetch'}. Check your internet connection and try again.`,
+          'error'
+        );
+        setMateScanButtonState('idle');
+      } else {
+        // Show a retrying message but keep polling
+        setMateScanStatus(
+          `Connection issue — retrying… (${consecutiveNetworkErrors}/${MAX_NETWORK_RETRIES})`,
+          'busy'
+        );
+      }
+      return;
+    }
+
+    // Reset error counter on any successful network response
+    consecutiveNetworkErrors = 0;
 
     if (error) {
+      // Supabase-level error (auth, RLS, bad query) — these are fatal
       clearInterval(mateScanTimer);
       mateScanTimer = null;
       mateScanRequestId = null;
-      setMateScanStatus(`Read error: ${error.message}`, 'error');
+      const isAuthErr = error.code === 'PGRST301' || error.message?.includes('JWT');
+      setMateScanStatus(
+        isAuthErr
+          ? 'Auth error — please log out and log in again.'
+          : `Database error: ${error.message}`,
+        'error'
+      );
       setMateScanButtonState('idle');
       return;
     }
@@ -3816,6 +4011,7 @@ function pollMateScanLog(requestId) {
     }
   }, MATE_SCAN_POLL_MS);
 }
+
 
 async function loadMateCardDetails(uid, fallbackName = '-') {
   if (!uid || !BACKEND.client) return false;
@@ -4032,7 +4228,8 @@ function getWorkerPaymentStats() {
   let doneCount = 0;
   myAssignments.forEach(a => {
     const job = JOBS.find(j => j.id === a.jid) || EJOBS.find(j => j.id === a.jid);
-    const payout = Math.round(Number(job?.pay || 0) * 0.95);
+    // Worker receives the full advertised job pay; the 5% platform fee is charged to the employer on top
+    const payout = Number(job?.pay || 0);
     if (a.status === 'done') {
       paidOut += payout;
       doneCount += 1;
@@ -4054,15 +4251,25 @@ function getEmployerPaymentStats() {
   const openJobs = myJobs.filter(j => j.status === 'open').length;
   const inProgressJobs = myJobs.filter(j => j.status !== 'open').length;
 
-  // Calculate paid amount from completed assignments (worker gets 95% of job pay)
+  // For each completed assignment: employer is debited job pay + 5% platform fee
+  // Worker receives 100% of job pay; platform fee is additional charge to employer
   const paidAmount = S.assigns
     .filter(a => a.status === 'done' && myJobs.some(j => j.id === a.jid))
     .reduce((sum, a) => {
       const job = myJobs.find(j => j.id === a.jid);
-      return sum + Math.round(Number(job?.pay || 0) * 0.95); // Worker gets 95%
+      const jobPay = Number(job?.pay || 0);
+      const commission = Math.round(jobPay * 0.05);
+      return sum + jobPay + commission; // Total employer debit = pay + 5% fee
     }, 0);
 
-  const escrowBalance = Math.max(0, funded - Math.round(funded * 0.05) - paidAmount);
+  // Escrow balance = sum of open/assigned job pays still not yet settled
+  const settledJobIds = new Set(
+    S.assigns.filter(a => a.status === 'done' && myJobs.some(j => j.id === a.jid)).map(a => a.jid)
+  );
+  const escrowBalance = Math.max(0, myJobs
+    .filter(j => !settledJobIds.has(j.id))
+    .reduce((sum, j) => sum + Number(j?.pay || 0), 0)
+  );
   return { escrowBalance, funded, openJobs, inProgressJobs, paidAmount };
 }
 
